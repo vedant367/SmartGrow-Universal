@@ -1083,6 +1083,10 @@ async function submitAuth() {
     showMsg('Please enter your Device ID from the box.', 'error');
     return;
   }
+  if (mode === 'signup' && !/^SG-\d{4}-\d{3}$/.test(deviceId)) {
+    showMsg('Device ID should look like SG-2026-001.', 'error');
+    return;
+  }
 
   btn.disabled = true;
   const fb = window._fb;
@@ -1091,27 +1095,32 @@ async function submitAuth() {
     if (mode === 'signup') {
       showMsg('Creating your account...', 'info');
 
-      // Check device isn't already linked
+      // Step 1: Create the auth account FIRST so we're authenticated
+      // for the upcoming Firestore reads/writes.
+      const cred = await fb.createUserWithEmailAndPassword(fb.auth, email, password);
+      const uid = cred.user.uid;
+
+      // Step 2: Now that we're logged in, check if device is already linked
       const deviceRef = fb.doc(fb.db, 'devices', deviceId);
       const deviceSnap = await fb.getDoc(deviceRef);
+
       if (deviceSnap.exists()) {
+        // Device belongs to someone else — delete the orphan account we
+        // just created and show an error.
         showMsg('This device is already linked to another account.', 'error');
+        try { await cred.user.delete(); } catch(e) { console.warn('Cleanup failed:', e); }
         btn.disabled = false;
         return;
       }
 
-      // Create auth account
-      const cred = await fb.createUserWithEmailAndPassword(fb.auth, email, password);
-      const uid = cred.user.uid;
-
-      // Create user doc
+      // Step 3: Create user doc
       await fb.setDoc(fb.doc(fb.db, 'users', uid), {
         email: email,
         deviceId: deviceId,
         createdAt: fb.serverTimestamp()
       });
 
-      // Create device doc (links device to user)
+      // Step 4: Create device doc (links device to this user)
       await fb.setDoc(deviceRef, {
         ownerId: uid,
         linkedAt: fb.serverTimestamp()
@@ -1119,6 +1128,7 @@ async function submitAuth() {
 
       showMsg('Account created! Loading your dashboard...', 'success');
       // onAuthStateChanged will pick it up and load dashboard
+
     } else {
       showMsg('Signing in...', 'info');
       await fb.signInWithEmailAndPassword(fb.auth, email, password);
