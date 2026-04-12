@@ -1,0 +1,1471 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>SmartGrow</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#000000">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+<script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+  import {
+    getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword,
+    signOut, onAuthStateChanged, setPersistence, browserLocalPersistence
+  } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+  import {
+    getFirestore, doc, getDoc, setDoc, serverTimestamp
+  } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyBHxI5zf49BFoNz8thBrws1NP3r2V_jmtM",
+    authDomain: "smartgrow-40903.firebaseapp.com",
+    projectId: "smartgrow-40903",
+    storageBucket: "smartgrow-40903.firebasestorage.app",
+    messagingSenderId: "38002126026",
+    appId: "1:38002126026:web:be3162b56cc2c4d2fc9833"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db = getFirestore(app);
+
+  // Persist login across app restarts — this is what gives us auto-login
+  await setPersistence(auth, browserLocalPersistence);
+
+  // Expose to window so non-module script below can use them
+  window._fb = {
+    auth, db,
+    createUserWithEmailAndPassword, signInWithEmailAndPassword,
+    signOut, onAuthStateChanged, doc, getDoc, setDoc, serverTimestamp
+  };
+  window.dispatchEvent(new Event('firebase-ready'));
+</script>
+
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+<style>
+/* ===== THEME VARIABLES ===== */
+:root {
+  --font: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: 'SF Mono', 'Menlo', 'Consolas', monospace;
+  --r-sm: 12px;
+  --r-md: 16px;
+  --r-lg: 22px;
+  --r-xl: 26px;
+  --ease: cubic-bezier(.25,.46,.45,.94);
+}
+
+[data-theme="dark"] {
+  --bg: #000000;
+  --bg2: #1c1c1e;
+  --bg3: #2c2c2e;
+  --bg4: #3a3a3c;
+  --border: rgba(255,255,255,.07);
+  --border2: rgba(255,255,255,.14);
+  --text1: #f5f5f7;
+  --text2: #a1a1a6;
+  --text3: #636366;
+  --green: #30d158;
+  --green-bg: rgba(48,209,88,.12);
+  --green-glow: rgba(48,209,88,.25);
+  --red: #ff453a;
+  --red-bg: rgba(255,69,58,.12);
+  --blue: #0a84ff;
+  --blue-bg: rgba(10,132,255,.12);
+  --orange: #ff9f0a;
+  --orange-bg: rgba(255,159,10,.12);
+  --shadow: 0 2px 16px rgba(0,0,0,.3);
+  --shadow-hover: 0 8px 32px rgba(0,0,0,.4);
+  --term-bg: #0c0c0e;
+  --term-text: #4af07a;
+  --term-ts: #555;
+  --term-info: #64d2ff;
+  --term-err: #ff453a;
+  --term-border: rgba(255,255,255,.05);
+  --term-btn-bg: rgba(255,255,255,.06);
+  --term-btn-text: rgba(255,255,255,.4);
+  --term-btn-hover: rgba(255,255,255,.1);
+  --term-btn-text-hover: rgba(255,255,255,.65);
+  --term-scroll: rgba(255,255,255,.08);
+}
+
+[data-theme="light"] {
+  --bg: #f2f2f7;
+  --bg2: #ffffff;
+  --bg3: #f5f5f7;
+  --bg4: #e8e8ed;
+  --border: rgba(0,0,0,.06);
+  --border2: rgba(0,0,0,.12);
+  --text1: #1d1d1f;
+  --text2: #6e6e73;
+  --text3: #aeaeb2;
+  --green: #34c759;
+  --green-bg: rgba(52,199,89,.1);
+  --green-glow: rgba(52,199,89,.2);
+  --red: #ff3b30;
+  --red-bg: rgba(255,59,48,.1);
+  --blue: #007aff;
+  --blue-bg: rgba(0,122,255,.1);
+  --orange: #ff9500;
+  --orange-bg: rgba(255,149,0,.1);
+  --shadow: 0 1px 4px rgba(0,0,0,.05), 0 0 0 1px var(--border);
+  --shadow-hover: 0 8px 28px rgba(0,0,0,.08), 0 0 0 1px var(--border2);
+  --term-bg: #ffffff;
+  --term-text: #1d7a35;
+  --term-ts: #b0b0b5;
+  --term-info: #0063cc;
+  --term-err: #d42620;
+  --term-border: rgba(0,0,0,.06);
+  --term-btn-bg: rgba(0,0,0,.04);
+  --term-btn-text: rgba(0,0,0,.35);
+  --term-btn-hover: rgba(0,0,0,.08);
+  --term-btn-text-hover: rgba(0,0,0,.6);
+  --term-scroll: rgba(0,0,0,.08);
+}
+
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+body{
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text1);
+  min-height: 100dvh;
+  -webkit-font-smoothing: antialiased;
+  transition: background .35s var(--ease), color .35s var(--ease);
+}
+
+/* ===== SCREEN SWITCHING ===== */
+.screen { display: none; }
+.screen.active { display: block; }
+
+/* ===== LOADING SCREEN ===== */
+#screen-loading {
+  min-height: 100dvh;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 20px;
+}
+#screen-loading.active { display: flex; }
+
+.loading-logo {
+  width: 72px; height: 72px;
+  background: linear-gradient(135deg, #30d158, #0a8a3d);
+  border-radius: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 36px;
+  box-shadow: 0 8px 32px rgba(48,209,88,.4);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%,100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.05); opacity: .85; }
+}
+
+.loading-text {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text2);
+  letter-spacing: .3px;
+}
+
+/* ===== LOGIN SCREEN ===== */
+#screen-login {
+  min-height: 100dvh;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+#screen-login.active { display: flex; }
+
+.login-box {
+  width: 100%;
+  max-width: 400px;
+  background: var(--bg2);
+  border-radius: var(--r-xl);
+  padding: 32px 28px;
+  box-shadow: var(--shadow);
+  position: relative;
+}
+.login-box::after {
+  content:'';
+  position:absolute;
+  inset:0;
+  border-radius: var(--r-xl);
+  border: 1px solid var(--border);
+  pointer-events: none;
+}
+
+.login-header {
+  text-align: center;
+  margin-bottom: 24px;
+}
+.login-header .logo {
+  width: 56px; height: 56px;
+  background: linear-gradient(135deg, #30d158, #0a8a3d);
+  border-radius: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  box-shadow: 0 6px 20px rgba(48,209,88,.35);
+  margin-bottom: 14px;
+}
+.login-header h1 {
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -.5px;
+  margin-bottom: 4px;
+}
+.login-header p {
+  font-size: 13px;
+  color: var(--text3);
+  font-weight: 500;
+}
+
+.login-tabs {
+  display: flex;
+  background: var(--bg3);
+  border-radius: 12px;
+  padding: 4px;
+  margin-bottom: 20px;
+}
+.login-tab {
+  flex: 1;
+  padding: 9px;
+  border: none;
+  background: transparent;
+  color: var(--text2);
+  font-family: var(--font);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  border-radius: 9px;
+  transition: all .2s var(--ease);
+}
+.login-tab.active {
+  background: var(--bg2);
+  color: var(--text1);
+  box-shadow: 0 2px 6px rgba(0,0,0,.08);
+}
+
+.field {
+  margin-bottom: 14px;
+}
+.field label {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .6px;
+  color: var(--text3);
+  margin-bottom: 6px;
+}
+.field input {
+  width: 100%;
+  height: 46px;
+  padding: 0 14px;
+  border-radius: 12px;
+  border: 1.5px solid var(--border);
+  background: var(--bg3);
+  color: var(--text1);
+  font-family: var(--font);
+  font-size: 14px;
+  font-weight: 500;
+  outline: none;
+  transition: border-color .2s;
+  -webkit-appearance: none;
+}
+.field input:focus {
+  border-color: var(--blue);
+}
+
+.signup-only { display: none; }
+.login-box[data-mode="signup"] .signup-only { display: block; }
+
+.login-btn {
+  width: 100%;
+  height: 48px;
+  border: none;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #30d158, #0a8a3d);
+  color: #fff;
+  font-family: var(--font);
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  margin-top: 8px;
+  box-shadow: 0 6px 20px rgba(48,209,88,.3);
+  transition: all .2s var(--ease);
+}
+.login-btn:active { transform: scale(.98); }
+.login-btn:disabled {
+  opacity: .6;
+  cursor: not-allowed;
+}
+
+.login-msg {
+  margin-top: 14px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+  display: none;
+}
+.login-msg.show { display: block; }
+.login-msg.info { background: var(--blue-bg); color: var(--blue); }
+.login-msg.error { background: var(--red-bg); color: var(--red); }
+.login-msg.success { background: var(--green-bg); color: var(--green); }
+
+/* ===== DASHBOARD (original — untouched visually) ===== */
+.container{
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 20px 20px 40px;
+}
+
+.topbar{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 22px;
+}
+
+.brand{
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.brand-logo{
+  width: 42px; height: 42px;
+  background: linear-gradient(135deg, #30d158, #0a8a3d);
+  border-radius: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  box-shadow: 0 4px 14px rgba(48,209,88,.35);
+  flex-shrink: 0;
+}
+
+.brand h1{
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -.4px;
+}
+
+.brand small{
+  display: block;
+  font-size: 11px;
+  color: var(--text3);
+  font-weight: 500;
+  margin-top: 2px;
+  letter-spacing: .3px;
+}
+
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.theme-btn{
+  width: 52px; height: 30px;
+  border-radius: 999px;
+  border: none;
+  cursor: pointer;
+  position: relative;
+  transition: background .3s var(--ease);
+  flex-shrink: 0;
+}
+
+[data-theme="dark"] .theme-btn{ background: #39393d; }
+[data-theme="light"] .theme-btn{ background: var(--blue); }
+
+.theme-btn::after{
+  content:'';
+  position: absolute;
+  top: 2px; left: 2px;
+  width: 26px; height: 26px;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform .3s var(--ease);
+  box-shadow: 0 1px 4px rgba(0,0,0,.2);
+}
+
+[data-theme="light"] .theme-btn::after{ transform: translateX(22px); }
+
+.theme-btn .ico{
+  position: absolute;
+  top: 50%; transform: translateY(-50%);
+  font-size: 13px;
+  z-index: 1;
+  transition: opacity .3s;
+}
+.theme-btn .ico.m{ left: 7px; }
+.theme-btn .ico.s{ right: 7px; }
+[data-theme="dark"] .ico.s{ opacity: 0; }
+[data-theme="light"] .ico.m{ opacity: 0; }
+
+.logout-btn {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  color: var(--text2);
+  padding: 7px 14px;
+  border-radius: 10px;
+  font-family: var(--font);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all .2s;
+}
+.logout-btn:hover {
+  background: var(--red-bg);
+  color: var(--red);
+  border-color: var(--red-bg);
+}
+
+.header{
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 22px;
+}
+
+.card{
+  background: var(--bg2);
+  border-radius: var(--r-xl);
+  padding: 18px 20px;
+  box-shadow: var(--shadow);
+  transition: all .3s var(--ease);
+  position: relative;
+  overflow: hidden;
+}
+
+.card::after{
+  content:'';
+  position:absolute;
+  inset: 0;
+  border-radius: var(--r-xl);
+  border: 1px solid var(--border);
+  pointer-events: none;
+}
+
+.card:hover{
+  box-shadow: var(--shadow-hover);
+  transform: translateY(-1px);
+}
+
+.card-label{
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .8px;
+  color: var(--text3);
+  margin-bottom: 8px;
+}
+
+.hero-time{
+  font-size: 36px;
+  font-weight: 800;
+  letter-spacing: -1.5px;
+  font-variant-numeric: tabular-nums;
+}
+.hero-time.frozen { color: var(--text3); }
+
+.last-seen {
+  font-size: 10px;
+  color: var(--text3);
+  font-weight: 600;
+  margin-top: 4px;
+  letter-spacing: .3px;
+}
+
+.status-pill{
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 11px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 600;
+  transition: all .3s;
+}
+
+.ok{ background: var(--green-bg); color: var(--green); }
+.no{ background: var(--red-bg); color: var(--red); }
+.conn{ background: var(--blue-bg); color: var(--blue); }
+
+.dot{
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: blink 2s ease-in-out infinite;
+}
+
+@keyframes blink{
+  0%,100%{ opacity:1 }
+  50%{ opacity:.35 }
+}
+
+.sensor{
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 7px 0;
+  font-size: 14px;
+}
+
+.sensor:not(:last-child){
+  border-bottom: 1px solid var(--border);
+}
+
+.sensor-icon{ color: var(--text3); }
+
+.sensor-val{
+  font-weight: 700;
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+
+.section-label{
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .8px;
+  color: var(--text3);
+  margin: 22px 0 12px 4px;
+}
+
+.grid{
+  display: grid;
+  grid-template-columns: repeat(2,1fr);
+  gap: 12px;
+}
+
+.relay{
+  background: var(--bg2);
+  border-radius: var(--r-xl);
+  padding: 20px;
+  box-shadow: var(--shadow);
+  transition: all .3s var(--ease);
+  position: relative;
+  overflow: hidden;
+}
+
+.relay::after{
+  content:'';
+  position:absolute;
+  inset:0;
+  border-radius: var(--r-xl);
+  border: 1px solid var(--border);
+  pointer-events: none;
+  transition: border-color .3s;
+}
+
+.relay.glow::after{
+  border-color: var(--green-glow);
+}
+
+.relay:hover{
+  box-shadow: var(--shadow-hover);
+  transform: translateY(-1px);
+}
+
+.relay-top{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.relay-name{
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -.2px;
+  cursor: pointer;
+  padding: 2px 6px;
+  margin: -2px -6px;
+  border-radius: 8px;
+  border: 1.5px solid transparent;
+  transition: all .2s;
+  max-width: 160px;
+  outline: none;
+  background: transparent;
+  color: var(--text1);
+  font-family: var(--font);
+}
+
+.relay-name:hover{
+  border-color: var(--border2);
+  background: var(--bg3);
+}
+
+.relay-name:focus{
+  border-color: var(--blue);
+  background: var(--bg3);
+}
+
+.relay-name-hint{
+  font-size: 9px;
+  color: var(--text3);
+  margin-top: -8px;
+  margin-bottom: 10px;
+  opacity: 0;
+  transition: opacity .2s;
+  pointer-events: none;
+}
+
+.relay:hover .relay-name-hint{
+  opacity: 1;
+}
+
+.mode-badge{
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  padding: 3px 9px;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+
+.mode-auto{ background: var(--blue-bg); color: var(--blue); }
+.mode-man{ background: var(--orange-bg); color: var(--orange); }
+
+.btn{
+  width: 100%;
+  padding: 13px;
+  border-radius: var(--r-md);
+  border: none;
+  font-family: var(--font);
+  font-weight: 700;
+  font-size: 14.5px;
+  cursor: pointer;
+  transition: all .2s var(--ease);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+}
+
+.btn:active{ transform: scale(.97); }
+
+.on{
+  background: linear-gradient(135deg, var(--green), #28b84d);
+  color: #fff;
+  box-shadow: 0 4px 16px var(--green-glow);
+}
+
+.off{
+  background: var(--bg3);
+  color: var(--text2);
+}
+
+.auto{
+  background: var(--blue);
+  color: #fff;
+  margin-top: 8px;
+  font-size: 13px;
+  padding: 11px;
+}
+
+.auto.off{
+  background: var(--bg3);
+  color: var(--text3);
+  box-shadow: none;
+}
+
+.sched-area{
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.sched-head{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.sched-title{
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .6px;
+  color: var(--text3);
+}
+
+.schedule-row{
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 6px 0;
+}
+
+.schedule-row input[type="time"]{
+  flex: 1;
+  height: 36px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg3);
+  color: var(--text1);
+  font-family: var(--font);
+  font-size: 13px;
+  font-weight: 500;
+  padding: 0 10px;
+  outline: none;
+  transition: border-color .2s;
+  -webkit-appearance: none;
+}
+
+.schedule-row input[type="time"]:focus{
+  border-color: var(--blue);
+}
+
+.schedule-row .arrow{
+  font-size: 12px;
+  color: var(--text3);
+  flex-shrink: 0;
+}
+
+.schedule-row button{
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  border: none;
+  background: var(--red-bg);
+  color: var(--red);
+  font-size: 12px;
+  cursor: pointer;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all .15s;
+}
+
+.schedule-row button:hover{
+  background: var(--red);
+  color: #fff;
+}
+
+.add-btn{
+  width: 26px; height: 26px;
+  border-radius: 50%;
+  border: none;
+  background: var(--bg3);
+  color: var(--text2);
+  font-size: 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all .15s;
+}
+
+.add-btn:hover{ background: var(--blue-bg); color: var(--blue); }
+
+.save-btn{
+  width: 100%;
+  height: 36px;
+  border-radius: 10px;
+  border: none;
+  background: var(--blue);
+  color: #fff;
+  font-family: var(--font);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  margin-top: 6px;
+  transition: all .15s;
+}
+
+.save-btn:active{ transform: scale(.97); }
+.save-btn:hover{ opacity: .9; }
+
+.terminal{
+  margin-top: 8px;
+  background: var(--term-bg);
+  border-radius: var(--r-xl);
+  padding: 14px 16px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  line-height: 1.75;
+  height: 180px;
+  overflow-y: auto;
+  color: var(--term-text);
+  box-shadow: var(--shadow);
+  transition: background .35s var(--ease), color .35s var(--ease), box-shadow .35s var(--ease);
+  position: relative;
+}
+
+.terminal::after{
+  content:'';
+  position:absolute;
+  inset:0;
+  border-radius: var(--r-xl);
+  border: 1px solid var(--border);
+  pointer-events: none;
+}
+
+.terminal::-webkit-scrollbar{ width: 3px; }
+.terminal::-webkit-scrollbar-track{ background: transparent; }
+.terminal::-webkit-scrollbar-thumb{ background: var(--term-scroll); border-radius: 3px; }
+
+.term-header{
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--term-border);
+}
+
+.term-dots{
+  display: flex;
+  gap: 6px;
+}
+
+.term-dots span{
+  width: 10px; height: 10px;
+  border-radius: 50%;
+}
+
+.term-dots .r{ background: #ff5f57; }
+.term-dots .y{ background: #ffbd2e; }
+.term-dots .g{ background: #28c840; }
+
+.term-header button{
+  background: var(--term-btn-bg);
+  color: var(--term-btn-text);
+  border: none;
+  padding: 4px 12px;
+  border-radius: 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all .15s;
+}
+
+.term-header button:hover{
+  background: var(--term-btn-hover);
+  color: var(--term-btn-text-hover);
+}
+
+#log .ts{ color: var(--term-ts); }
+#log .info{ color: var(--term-info); }
+#log .err{ color: var(--term-err); }
+
+@keyframes rise{
+  from{ opacity:0; transform: translateY(14px); }
+  to{ opacity:1; transform: translateY(0); }
+}
+
+.card, .relay, .terminal{
+  animation: rise .5s var(--ease) backwards;
+}
+
+.header .card:nth-child(1){ animation-delay:.04s }
+.header .card:nth-child(2){ animation-delay:.08s }
+.header .card:nth-child(3){ animation-delay:.12s }
+.grid .relay:nth-child(1){ animation-delay:.16s }
+.grid .relay:nth-child(2){ animation-delay:.2s }
+.grid .relay:nth-child(3){ animation-delay:.24s }
+.grid .relay:nth-child(4){ animation-delay:.28s }
+.terminal{ animation-delay:.32s }
+
+@media(max-width:700px){
+  .container{ padding: 14px 14px 32px; }
+  .header{ grid-template-columns: 1fr; gap: 10px; }
+  .grid{ grid-template-columns: 1fr; gap: 10px; }
+  .hero-time{ font-size: 28px; }
+  .brand h1{ font-size: 17px; }
+  .relay-name{ max-width: 140px; }
+}
+
+@media(min-width:701px) and (max-width:900px){
+  .header{ grid-template-columns: 1fr 1fr; }
+  .header .card:last-child{ grid-column: 1 / -1; }
+}
+
+:focus-visible{
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+</style>
+</head>
+
+<body>
+
+<!-- ============ LOADING SCREEN ============ -->
+<div id="screen-loading" class="screen active">
+  <div class="loading-logo">🌱</div>
+  <div class="loading-text" id="loading-text">Logging in...</div>
+</div>
+
+<!-- ============ LOGIN SCREEN ============ -->
+<div id="screen-login" class="screen">
+  <div class="login-box" data-mode="signin" id="login-box">
+    <div class="login-header">
+      <div class="logo">🌱</div>
+      <h1>SmartGrow</h1>
+      <p>Your smart indoor garden</p>
+    </div>
+
+    <div class="login-tabs">
+      <button class="login-tab active" data-tab="signin" onclick="switchTab('signin')">Sign In</button>
+      <button class="login-tab" data-tab="signup" onclick="switchTab('signup')">Sign Up</button>
+    </div>
+
+    <div class="field">
+      <label>Email</label>
+      <input type="email" id="f-email" autocomplete="email" placeholder="you@example.com">
+    </div>
+
+    <div class="field">
+      <label>Password</label>
+      <input type="password" id="f-password" autocomplete="current-password" placeholder="••••••••">
+    </div>
+
+    <div class="field signup-only">
+      <label>Device ID</label>
+      <input type="text" id="f-deviceid" placeholder="SG-2025-001" autocapitalize="characters">
+    </div>
+
+    <button class="login-btn" id="login-submit" onclick="submitAuth()">Sign In</button>
+
+    <div class="login-msg" id="login-msg"></div>
+  </div>
+</div>
+
+<!-- ============ DASHBOARD SCREEN (your original, untouched) ============ -->
+<div id="screen-dashboard" class="screen">
+<div class="container">
+
+<div class="topbar">
+  <div class="brand">
+    <div class="brand-logo">🌱</div>
+    <div>
+      <h1>SmartGrow</h1>
+      <small id="brand-deviceid">--</small>
+    </div>
+  </div>
+  <div class="topbar-actions">
+    <button class="theme-btn" onclick="toggleTheme()" aria-label="Toggle theme">
+      <span class="ico m">🌙</span>
+      <span class="ico s">☀️</span>
+    </button>
+    <button class="logout-btn" onclick="doLogout()">Logout</button>
+  </div>
+</div>
+
+<div class="header">
+  <div class="card">
+    <div class="card-label">Device Time</div>
+    <div class="hero-time" id="time">--:--</div>
+    <div class="last-seen" id="last-seen"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-label">Status</div>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-top:4px">
+      <div>Device: <span id="device" class="status-pill no"><span class="dot"></span> Offline</span></div>
+      <div>MQTT: <span id="mqtt" class="status-pill no"><span class="dot"></span> Disconnected</span></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-label">Sensors</div>
+    <div class="sensor"><span class="sensor-icon">🌡</span> Temp <span class="sensor-val" id="temp">--</span></div>
+    <div class="sensor"><span class="sensor-icon">💧</span> Humidity <span class="sensor-val" id="hum">--</span></div>
+    <div class="sensor"><span class="sensor-icon">🚰</span> Water <span class="sensor-val" id="water">--</span></div>
+  </div>
+</div>
+
+<div class="section-label">Relay Controls</div>
+<div class="grid" id="relays"></div>
+
+<div class="section-label" style="margin-top:24px">System Log</div>
+<div class="terminal">
+  <div class="term-header">
+    <div class="term-dots"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+    <button onclick="clearLog()">Clear</button>
+  </div>
+  <div id="log"></div>
+</div>
+
+</div>
+</div>
+
+<script>
+/* ==================== SCREEN SWITCHER ==================== */
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+function setLoadingText(t) {
+  document.getElementById('loading-text').textContent = t;
+}
+
+/* ==================== THEME (persists even before login) ==================== */
+(function initTheme(){
+  const s=localStorage.getItem("sg_theme");
+  if(s) document.documentElement.setAttribute("data-theme",s);
+})();
+
+function toggleTheme(){
+  const h=document.documentElement;
+  const n=h.getAttribute("data-theme")==="dark"?"light":"dark";
+  h.setAttribute("data-theme",n);
+  localStorage.setItem("sg_theme",n);
+}
+
+/* ==================== LOGIN UI ==================== */
+function switchTab(mode) {
+  const box = document.getElementById('login-box');
+  box.dataset.mode = mode;
+  document.querySelectorAll('.login-tab').forEach(t => {
+    t.classList.toggle('active', t.dataset.tab === mode);
+  });
+  document.getElementById('login-submit').textContent =
+    mode === 'signup' ? 'Sign Up & Link Device' : 'Sign In';
+  hideMsg();
+}
+
+function showMsg(text, type) {
+  const el = document.getElementById('login-msg');
+  el.textContent = text;
+  el.className = 'login-msg show ' + type;
+}
+function hideMsg() {
+  document.getElementById('login-msg').classList.remove('show');
+}
+
+function friendlyAuthError(err) {
+  const c = err.code || '';
+  if (c.includes('invalid-email')) return 'Please enter a valid email address.';
+  if (c.includes('missing-password')) return 'Please enter your password.';
+  if (c.includes('weak-password')) return 'Password must be at least 6 characters.';
+  if (c.includes('email-already-in-use')) return 'An account with this email already exists. Try signing in instead.';
+  if (c.includes('invalid-credential') || c.includes('wrong-password') || c.includes('user-not-found'))
+    return 'Wrong email or password.';
+  if (c.includes('too-many-requests')) return 'Too many attempts. Please wait a minute and try again.';
+  if (c.includes('network-request-failed')) return 'Network error. Check your internet connection.';
+  return err.message || 'Something went wrong. Please try again.';
+}
+
+async function submitAuth() {
+  const mode = document.getElementById('login-box').dataset.mode;
+  const email = document.getElementById('f-email').value.trim();
+  const password = document.getElementById('f-password').value;
+  const deviceId = document.getElementById('f-deviceid').value.trim().toUpperCase();
+  const btn = document.getElementById('login-submit');
+
+  if (!email || !password) {
+    showMsg('Please fill in email and password.', 'error');
+    return;
+  }
+  if (mode === 'signup' && !deviceId) {
+    showMsg('Please enter your Device ID from the box.', 'error');
+    return;
+  }
+
+  btn.disabled = true;
+  const fb = window._fb;
+
+  try {
+    if (mode === 'signup') {
+      showMsg('Creating your account...', 'info');
+
+      // Check device isn't already linked
+      const deviceRef = fb.doc(fb.db, 'devices', deviceId);
+      const deviceSnap = await fb.getDoc(deviceRef);
+      if (deviceSnap.exists()) {
+        showMsg('This device is already linked to another account.', 'error');
+        btn.disabled = false;
+        return;
+      }
+
+      // Create auth account
+      const cred = await fb.createUserWithEmailAndPassword(fb.auth, email, password);
+      const uid = cred.user.uid;
+
+      // Create user doc
+      await fb.setDoc(fb.doc(fb.db, 'users', uid), {
+        email: email,
+        deviceId: deviceId,
+        createdAt: fb.serverTimestamp()
+      });
+
+      // Create device doc (links device to user)
+      await fb.setDoc(deviceRef, {
+        ownerId: uid,
+        linkedAt: fb.serverTimestamp()
+      });
+
+      showMsg('Account created! Loading your dashboard...', 'success');
+      // onAuthStateChanged will pick it up and load dashboard
+    } else {
+      showMsg('Signing in...', 'info');
+      await fb.signInWithEmailAndPassword(fb.auth, email, password);
+      // onAuthStateChanged will pick it up
+    }
+  } catch (err) {
+    console.error(err);
+    showMsg(friendlyAuthError(err), 'error');
+    btn.disabled = false;
+  }
+}
+
+async function doLogout() {
+  const fb = window._fb;
+  try {
+    // Disconnect MQTT cleanly
+    if (window._mqttClient) {
+      try { window._mqttClient.end(true); } catch(e) {}
+      window._mqttClient = null;
+    }
+    await fb.signOut(fb.auth);
+    // onAuthStateChanged handles the rest
+  } catch (err) {
+    console.error(err);
+  }
+}
+
+/* ==================== AUTH STATE HANDLER ==================== */
+window.addEventListener('firebase-ready', () => {
+  const fb = window._fb;
+
+  fb.onAuthStateChanged(fb.auth, async (user) => {
+    if (user) {
+      // Logged in — fetch their device and load dashboard
+      setLoadingText('Loading your device...');
+      showScreen('screen-loading');
+
+      try {
+        const userDoc = await fb.getDoc(fb.doc(fb.db, 'users', user.uid));
+        if (!userDoc.exists() || !userDoc.data().deviceId) {
+          // Edge case: auth exists but no linked device — force signup flow
+          await fb.signOut(fb.auth);
+          showScreen('screen-login');
+          switchTab('signup');
+          showMsg('Please link your device to continue.', 'info');
+          document.getElementById('login-submit').disabled = false;
+          return;
+        }
+
+        const deviceId = userDoc.data().deviceId;
+        window.DEVICE_ID = deviceId;
+        document.getElementById('brand-deviceid').textContent = deviceId;
+
+        showScreen('screen-dashboard');
+        startDashboard(deviceId);
+      } catch (err) {
+        console.error(err);
+        setLoadingText('Error loading device. Please try again.');
+        setTimeout(async () => {
+          await fb.signOut(fb.auth);
+        }, 2000);
+      }
+    } else {
+      // Logged out — show login screen
+      showScreen('screen-login');
+      switchTab('signin');
+      document.getElementById('login-submit').disabled = false;
+      document.getElementById('f-password').value = '';
+    }
+  });
+});
+
+/* ==================== DASHBOARD (your original logic, DEVICE_ID now dynamic) ==================== */
+let dashboardStarted = false;
+let lastSeen = 0;
+
+// State — loaded fresh each login but persisted per-device in localStorage
+let schedules, relays, RELAY_LABELS;
+
+function loadDashboardState(deviceId) {
+  const DEFAULT_SCHEDULES={r1:[],r2:[],r3:[],r4:[]};
+  const DEFAULT_RELAYS={
+    r1:{state:0,mode:"MAN"},
+    r2:{state:0,mode:"MAN"},
+    r3:{state:0,mode:"MAN"},
+    r4:{state:0,mode:"MAN"}
+  };
+  const DEFAULT_LABELS={r1:"Relay 1",r2:"Relay 2",r3:"Relay 3",r4:"Relay 4"};
+
+  // Namespace per device so switching accounts doesn't mix data
+  schedules = JSON.parse(localStorage.getItem(`sg_schedules_${deviceId}`)) || DEFAULT_SCHEDULES;
+  relays = JSON.parse(localStorage.getItem(`sg_relays_${deviceId}`)) || DEFAULT_RELAYS;
+  RELAY_LABELS = JSON.parse(localStorage.getItem(`sg_relay_names_${deviceId}`)) || {...DEFAULT_LABELS};
+}
+
+function saveRelayNames(){
+  localStorage.setItem(`sg_relay_names_${window.DEVICE_ID}`, JSON.stringify(RELAY_LABELS));
+}
+
+function renameRelay(k, el){
+  const val=el.value.trim();
+  if(val.length>0 && val.length<=20){
+    RELAY_LABELS[k]=val;
+    saveRelayNames();
+    log(`Renamed → ${val}`,"info");
+  } else {
+    el.value=RELAY_LABELS[k];
+  }
+  el.blur();
+}
+
+const logEl=document.getElementById("log");
+function log(msg,type){
+  const ts=new Date().toLocaleTimeString();
+  const cls=type==="info"?"info":type==="error"?"err":"";
+  logEl.innerHTML+=`<div><span class="ts">[${ts}]</span> <span class="${cls}">${msg}</span></div>`;
+  logEl.parentElement.scrollTop=logEl.parentElement.scrollHeight;
+}
+function clearLog(){logEl.innerHTML="";}
+
+function startDashboard(deviceId) {
+  if (dashboardStarted) {
+    // Device changed (shouldn't normally happen) — full reload is cleanest
+    location.reload();
+    return;
+  }
+  dashboardStarted = true;
+
+  loadDashboardState(deviceId);
+
+  const STATUS_TOPIC = `smartgrow/${deviceId}/status`;
+  const CMD_TOPIC = `smartgrow/${deviceId}/cmd`;
+  window.CMD_TOPIC = CMD_TOPIC;
+
+  log(`Dashboard loaded for ${deviceId}`, "info");
+
+  const mqttEl = document.getElementById("mqtt");
+  const deviceEl = document.getElementById("device");
+  const timeEl = document.getElementById("time");
+  const lastSeenEl = document.getElementById("last-seen");
+
+  const client = mqtt.connect(
+    "wss://x0fc990f.ala.asia-southeast1.emqxsl.com:8084/mqtt",
+    {username:"SmartGrow_V1",password:"123456789",reconnectPeriod:2000}
+  );
+  window._mqttClient = client;
+
+  client.on("connect",()=>{
+    mqttEl.innerHTML='<span class="dot"></span> Connected';
+    mqttEl.className="status-pill conn";
+    client.subscribe(STATUS_TOPIC);
+    log("MQTT connected","info");
+  });
+
+  client.on("offline",()=>{
+    mqttEl.innerHTML='<span class="dot"></span> Disconnected';
+    mqttEl.className="status-pill no";
+    log("MQTT disconnected","error");
+  });
+
+  client.on("error",(err)=>{
+    log("MQTT error: "+err.message,"error");
+  });
+
+  client.on("message",(_,msg)=>{
+    lastSeen=Date.now();
+    try{
+      const d=JSON.parse(msg);
+
+      deviceEl.innerHTML='<span class="dot"></span> Online';
+      deviceEl.className="status-pill ok";
+      timeEl.classList.remove('frozen');
+      lastSeenEl.textContent = '';
+
+      if(d.time) timeEl.textContent=d.time;
+      if(d.temp!==undefined) document.getElementById('temp').textContent=(d.temp===null||isNaN(d.temp))?"--":d.temp.toFixed(1)+" °C";
+      if(d.hum!==undefined) document.getElementById('hum').textContent=(d.hum===null||isNaN(d.hum))?"--":d.hum.toFixed(0)+" %";
+      if(d.water!==undefined){
+        const waterEl = document.getElementById('water');
+        waterEl.textContent=d.water?"OK":"LOW";
+        waterEl.style.color=d.water?"var(--green)":"var(--red)";
+      }
+
+      ["r1","r2","r3","r4"].forEach(k=>{
+        if(d[k]){
+          relays[k]=d[k];
+          updateRelayUI(k);
+        }
+      });
+
+      localStorage.setItem(`sg_relays_${deviceId}`,JSON.stringify(relays));
+    }catch(e){
+      log("Parse error: "+e.message,"error");
+    }
+  });
+
+  // Online watchdog — 8s timeout. When device goes offline, freeze time display
+  setInterval(()=>{
+    if (lastSeen === 0) return; // never seen yet
+    const on=(Date.now()-lastSeen)<8000;
+    deviceEl.innerHTML=`<span class="dot"></span> ${on?"Online":"Offline"}`;
+    deviceEl.className=`status-pill ${on?"ok":"no"}`;
+
+    if (!on) {
+      timeEl.classList.add('frozen');
+      const secs = Math.floor((Date.now()-lastSeen)/1000);
+      if (secs < 60) lastSeenEl.textContent = `Last seen ${secs}s ago`;
+      else if (secs < 3600) lastSeenEl.textContent = `Last seen ${Math.floor(secs/60)}m ago`;
+      else lastSeenEl.textContent = `Last seen ${Math.floor(secs/3600)}h ${Math.floor((secs%3600)/60)}m ago`;
+    }
+  },2000);
+
+  render();
+}
+
+function render(){
+  const el=document.getElementById("relays");
+  el.innerHTML="";
+  Object.keys(relays).forEach(k=>{
+    const autoDisabled=schedules[k].length===0;
+    const isOn=!!relays[k].state;
+    const isAuto=relays[k].mode==="AUTO";
+
+    let schedHTML="";
+    schedules[k].forEach((s,i)=>{
+      schedHTML+=`
+        <div class="schedule-row">
+          <input type="time" step="60" value="${s.on}"
+            onchange="updateSchedule('${k}',${i},'on',this.value)">
+          <span class="arrow">→</span>
+          <input type="time" step="60" value="${s.off}"
+            onchange="updateSchedule('${k}',${i},'off',this.value)">
+          <button onclick="removeSchedule('${k}',${i})">✕</button>
+        </div>`;
+    });
+
+    el.innerHTML+=`
+      <div class="relay ${isOn?'glow':''}" id="${k}">
+        <div class="relay-top">
+          <input class="relay-name" value="${RELAY_LABELS[k]}"
+            maxlength="20"
+            onblur="renameRelay('${k}',this)"
+            onkeydown="if(event.key==='Enter')this.blur()"
+            spellcheck="false">
+          <span class="mode-badge ${isAuto?'mode-auto':'mode-man'}">${isAuto?"Auto":"Manual"}</span>
+        </div>
+        <div class="relay-name-hint">Click name to edit</div>
+        <button class="btn ${isOn?'on':'off'}" onclick="toggle('${k}')">
+          ⏻ ${isOn?'ON':'OFF'}
+        </button>
+        <button class="btn auto ${autoDisabled||!isAuto?'off':''}"
+          onclick="toggleAuto('${k}')" ${autoDisabled?'disabled':''}>
+          ⏱ ${isAuto?'Auto Enabled':'Enable Auto'}
+        </button>
+        <div class="sched-area">
+          <div class="sched-head">
+            <span class="sched-title">Schedule</span>
+            <button class="add-btn" onclick="addSchedule('${k}')" ${schedules[k].length>=3?'disabled':''}>+</button>
+          </div>
+          <div id="${k}_sched">${schedHTML}</div>
+          ${schedules[k].length>0?`<button class="save-btn" onclick="saveSchedule('${k}')">Save Schedule</button>`:''}
+        </div>
+      </div>`;
+  });
+}
+
+function updateRelayUI(k){
+  const card=document.getElementById(k);
+  if(!card) return;
+
+  const isOn=!!relays[k].state;
+  const isAuto=relays[k].mode==="AUTO";
+
+  card.className=`relay ${isOn?'glow':''}`;
+
+  const badge=card.querySelector('.mode-badge');
+  if(badge){
+    badge.textContent=isAuto?"Auto":"Manual";
+    badge.className=`mode-badge ${isAuto?'mode-auto':'mode-man'}`;
+  }
+
+  const btns=card.querySelectorAll('.btn');
+  if(btns[0]){
+    btns[0].innerHTML=`⏻ ${isOn?'ON':'OFF'}`;
+    btns[0].className=`btn ${isOn?'on':'off'}`;
+  }
+  if(btns[1]){
+    const autoDisabled=schedules[k].length===0;
+    btns[1].innerHTML=`⏱ ${isAuto?'Auto Enabled':'Enable Auto'}`;
+    btns[1].className=`btn auto ${autoDisabled||!isAuto?'off':''}`;
+  }
+}
+
+function toggle(k){
+  window._mqttClient.publish(window.CMD_TOPIC,JSON.stringify({[k]:!relays[k].state}));
+  log(`Toggle sent → ${RELAY_LABELS[k]}`);
+}
+
+function toggleAuto(k){
+  if(schedules[k].length===0){
+    log(`AUTO blocked for ${RELAY_LABELS[k]} — no schedule`,"error");
+    return;
+  }
+  const newMode=relays[k].mode==="AUTO"?"MAN":"AUTO";
+  window._mqttClient.publish(window.CMD_TOPIC,JSON.stringify({mode:{[k]:newMode}}));
+  log(`${RELAY_LABELS[k]} → ${newMode}`,"info");
+}
+
+function addSchedule(k){
+  if(schedules[k].length<3){
+    schedules[k].push({on:"06:00",off:"06:30"});
+    persistSchedules();
+    render();
+  }
+}
+
+function updateSchedule(k,i,f,v){
+  schedules[k][i][f]=v;
+  persistSchedules();
+}
+
+function removeSchedule(k,i){
+  schedules[k].splice(i,1);
+  persistSchedules();
+  render();
+  window._mqttClient.publish(window.CMD_TOPIC,JSON.stringify({type:"schedule",[k]:schedules[k]}));
+  log(`Schedule removed → ${RELAY_LABELS[k]}`);
+}
+
+function saveSchedule(k){
+  window._mqttClient.publish(window.CMD_TOPIC,JSON.stringify({type:"schedule",[k]:schedules[k]}));
+  log(`Schedule saved → ${RELAY_LABELS[k]}`,"info");
+}
+
+function persistSchedules(){
+  localStorage.setItem(`sg_schedules_${window.DEVICE_ID}`,JSON.stringify(schedules));
+}
+
+/* ==================== SERVICE WORKER (PWA offline) ==================== */
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(err => {
+      console.warn('SW registration failed:', err);
+    });
+  });
+}
+</script>
+
+</body>
+</html>
