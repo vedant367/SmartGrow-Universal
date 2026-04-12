@@ -1,4 +1,4 @@
-const CACHE = 'smartgrow-v1';
+const CACHE = 'smartgrow-v3';
 const ASSETS = [
   './',
   './index.html',
