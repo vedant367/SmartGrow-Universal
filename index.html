@@ -7,6 +7,7 @@
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#000000">
 <link rel="apple-touch-icon" href="icon-192.png">
+<meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 
@@ -34,10 +35,8 @@
   const auth = getAuth(app);
   const db = getFirestore(app);
 
-  // Persist login across app restarts — this is what gives us auto-login
   await setPersistence(auth, browserLocalPersistence);
 
-  // Expose to window so non-module script below can use them
   window._fb = {
     auth, db,
     createUserWithEmailAndPassword, signInWithEmailAndPassword,
@@ -49,7 +48,6 @@
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
 <style>
-/* ===== THEME VARIABLES ===== */
 :root {
   --font: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
   --font-mono: 'SF Mono', 'Menlo', 'Consolas', monospace;
@@ -139,11 +137,9 @@ body{
   transition: background .35s var(--ease), color .35s var(--ease);
 }
 
-/* ===== SCREEN SWITCHING ===== */
 .screen { display: none; }
 .screen.active { display: block; }
 
-/* ===== LOADING SCREEN ===== */
 #screen-loading {
   min-height: 100dvh;
   display: none;
@@ -178,7 +174,6 @@ body{
   letter-spacing: .3px;
 }
 
-/* ===== LOGIN SCREEN ===== */
 #screen-login {
   min-height: 100dvh;
   display: none;
@@ -322,13 +317,13 @@ body{
   font-weight: 600;
   text-align: center;
   display: none;
+  word-wrap: break-word;
 }
 .login-msg.show { display: block; }
 .login-msg.info { background: var(--blue-bg); color: var(--blue); }
 .login-msg.error { background: var(--red-bg); color: var(--red); }
 .login-msg.success { background: var(--green-bg); color: var(--green); }
 
-/* ===== DASHBOARD (original — untouched visually) ===== */
 .container{
   max-width: 980px;
   margin: 0 auto;
@@ -910,13 +905,11 @@ body{
 
 <body>
 
-<!-- ============ LOADING SCREEN ============ -->
 <div id="screen-loading" class="screen active">
   <div class="loading-logo">🌱</div>
   <div class="loading-text" id="loading-text">Logging in...</div>
 </div>
 
-<!-- ============ LOGIN SCREEN ============ -->
 <div id="screen-login" class="screen">
   <div class="login-box" data-mode="signin" id="login-box">
     <div class="login-header">
@@ -942,7 +935,7 @@ body{
 
     <div class="field signup-only">
       <label>Device ID</label>
-      <input type="text" id="f-deviceid" placeholder="SG-2025-001" autocapitalize="characters">
+      <input type="text" id="f-deviceid" placeholder="SG-2026-001" autocapitalize="characters">
     </div>
 
     <button class="login-btn" id="login-submit" onclick="submitAuth()">Sign In</button>
@@ -951,7 +944,6 @@ body{
   </div>
 </div>
 
-<!-- ============ DASHBOARD SCREEN (your original, untouched) ============ -->
 <div id="screen-dashboard" class="screen">
 <div class="container">
 
@@ -1011,7 +1003,6 @@ body{
 </div>
 
 <script>
-/* ==================== SCREEN SWITCHER ==================== */
 function showScreen(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   document.getElementById(id).classList.add('active');
@@ -1021,7 +1012,6 @@ function setLoadingText(t) {
   document.getElementById('loading-text').textContent = t;
 }
 
-/* ==================== THEME (persists even before login) ==================== */
 (function initTheme(){
   const s=localStorage.getItem("sg_theme");
   if(s) document.documentElement.setAttribute("data-theme",s);
@@ -1034,7 +1024,6 @@ function toggleTheme(){
   localStorage.setItem("sg_theme",n);
 }
 
-/* ==================== LOGIN UI ==================== */
 function switchTab(mode) {
   const box = document.getElementById('login-box');
   box.dataset.mode = mode;
@@ -1056,7 +1045,8 @@ function hideMsg() {
 }
 
 function friendlyAuthError(err) {
-  const c = err.code || '';
+  const c = (err.code || '') + '';
+  const m = (err.message || '') + '';
   if (c.includes('invalid-email')) return 'Please enter a valid email address.';
   if (c.includes('missing-password')) return 'Please enter your password.';
   if (c.includes('weak-password')) return 'Password must be at least 6 characters.';
@@ -1065,6 +1055,8 @@ function friendlyAuthError(err) {
     return 'Wrong email or password.';
   if (c.includes('too-many-requests')) return 'Too many attempts. Please wait a minute and try again.';
   if (c.includes('network-request-failed')) return 'Network error. Check your internet connection.';
+  if (c.includes('permission-denied') || m.includes('Missing or insufficient permissions'))
+    return 'Database permissions error. Please check Firestore rules and try again.';
   return err.message || 'Something went wrong. Please try again.';
 }
 
@@ -1093,49 +1085,87 @@ async function submitAuth() {
 
   try {
     if (mode === 'signup') {
+      console.log('[SIGNUP] === Starting signup flow ===');
+      console.log('[SIGNUP] Email:', email, '| Device:', deviceId);
       showMsg('Creating your account...', 'info');
 
-      // Step 1: Create the auth account FIRST so we're authenticated
-      // for the upcoming Firestore reads/writes.
+      // STEP 1: Create the auth account
+      console.log('[SIGNUP] Step 1: createUserWithEmailAndPassword');
       const cred = await fb.createUserWithEmailAndPassword(fb.auth, email, password);
       const uid = cred.user.uid;
+      console.log('[SIGNUP] Step 1 OK. UID:', uid);
 
-      // Step 2: Now that we're logged in, check if device is already linked
+      // STEP 1.5: CRITICAL — force the auth token to materialize before
+      // any Firestore operation. Without this, Firestore SDK may still
+      // see the user as anonymous on the very next call, causing
+      // "Missing or insufficient permissions". This is the fix.
+      console.log('[SIGNUP] Step 1.5: Waiting for auth token to materialize');
+      await cred.user.getIdToken(true);
+      // Brief safety pause to let the SDK propagate the new auth state
+      await new Promise(r => setTimeout(r, 300));
+      console.log('[SIGNUP] Step 1.5 OK. Auth token ready.');
+
+      // STEP 2: Check if device is already linked
+      console.log('[SIGNUP] Step 2: getDoc on devices/' + deviceId);
       const deviceRef = fb.doc(fb.db, 'devices', deviceId);
-      const deviceSnap = await fb.getDoc(deviceRef);
+      let deviceSnap;
+      try {
+        deviceSnap = await fb.getDoc(deviceRef);
+        console.log('[SIGNUP] Step 2 OK. exists?', deviceSnap.exists());
+      } catch (e) {
+        console.error('[SIGNUP] Step 2 FAILED:', e);
+        // Cleanup orphan account
+        try { await cred.user.delete(); } catch(_) {}
+        throw e;
+      }
 
       if (deviceSnap.exists()) {
-        // Device belongs to someone else — delete the orphan account we
-        // just created and show an error.
         showMsg('This device is already linked to another account.', 'error');
-        try { await cred.user.delete(); } catch(e) { console.warn('Cleanup failed:', e); }
+        try { await cred.user.delete(); } catch(_) {}
         btn.disabled = false;
         return;
       }
 
-      // Step 3: Create user doc
-      await fb.setDoc(fb.doc(fb.db, 'users', uid), {
-        email: email,
-        deviceId: deviceId,
-        createdAt: fb.serverTimestamp()
-      });
+      // STEP 3: Create user doc
+      console.log('[SIGNUP] Step 3: setDoc on users/' + uid);
+      try {
+        await fb.setDoc(fb.doc(fb.db, 'users', uid), {
+          email: email,
+          deviceId: deviceId,
+          createdAt: fb.serverTimestamp()
+        });
+        console.log('[SIGNUP] Step 3 OK');
+      } catch (e) {
+        console.error('[SIGNUP] Step 3 FAILED:', e);
+        try { await cred.user.delete(); } catch(_) {}
+        throw e;
+      }
 
-      // Step 4: Create device doc (links device to this user)
-      await fb.setDoc(deviceRef, {
-        ownerId: uid,
-        linkedAt: fb.serverTimestamp()
-      });
+      // STEP 4: Create device doc
+      console.log('[SIGNUP] Step 4: setDoc on devices/' + deviceId);
+      try {
+        await fb.setDoc(deviceRef, {
+          ownerId: uid,
+          linkedAt: fb.serverTimestamp()
+        });
+        console.log('[SIGNUP] Step 4 OK');
+      } catch (e) {
+        console.error('[SIGNUP] Step 4 FAILED:', e);
+        // Don't delete user here — they have a user doc already, they can sign in.
+        throw e;
+      }
 
+      console.log('[SIGNUP] === SIGNUP COMPLETE ===');
       showMsg('Account created! Loading your dashboard...', 'success');
-      // onAuthStateChanged will pick it up and load dashboard
 
     } else {
+      console.log('[SIGNIN] === Starting signin flow ===');
       showMsg('Signing in...', 'info');
       await fb.signInWithEmailAndPassword(fb.auth, email, password);
-      // onAuthStateChanged will pick it up
+      console.log('[SIGNIN] OK');
     }
   } catch (err) {
-    console.error(err);
+    console.error('[AUTH] Error:', err);
     showMsg(friendlyAuthError(err), 'error');
     btn.disabled = false;
   }
@@ -1144,55 +1174,58 @@ async function submitAuth() {
 async function doLogout() {
   const fb = window._fb;
   try {
-    // Disconnect MQTT cleanly
     if (window._mqttClient) {
       try { window._mqttClient.end(true); } catch(e) {}
       window._mqttClient = null;
     }
     await fb.signOut(fb.auth);
-    // onAuthStateChanged handles the rest
   } catch (err) {
     console.error(err);
   }
 }
 
-/* ==================== AUTH STATE HANDLER ==================== */
 window.addEventListener('firebase-ready', () => {
   const fb = window._fb;
 
   fb.onAuthStateChanged(fb.auth, async (user) => {
     if (user) {
-      // Logged in — fetch their device and load dashboard
+      console.log('[AUTH] User signed in:', user.email, '| UID:', user.uid);
       setLoadingText('Loading your device...');
       showScreen('screen-loading');
 
       try {
+        // Wait briefly for auth token to be ready
+        await user.getIdToken();
+        await new Promise(r => setTimeout(r, 200));
+
         const userDoc = await fb.getDoc(fb.doc(fb.db, 'users', user.uid));
+
         if (!userDoc.exists() || !userDoc.data().deviceId) {
-          // Edge case: auth exists but no linked device — force signup flow
+          console.warn('[AUTH] User has no Firestore doc — orphan account.');
           await fb.signOut(fb.auth);
           showScreen('screen-login');
           switchTab('signup');
-          showMsg('Please link your device to continue.', 'info');
+          showMsg('Account incomplete. Please sign up again with your Device ID.', 'info');
           document.getElementById('login-submit').disabled = false;
           return;
         }
 
         const deviceId = userDoc.data().deviceId;
+        console.log('[AUTH] Linked device:', deviceId);
         window.DEVICE_ID = deviceId;
         document.getElementById('brand-deviceid').textContent = deviceId;
 
         showScreen('screen-dashboard');
         startDashboard(deviceId);
       } catch (err) {
-        console.error(err);
-        setLoadingText('Error loading device. Please try again.');
+        console.error('[AUTH] Error loading user doc:', err);
+        setLoadingText('Error: ' + (err.message || 'unknown'));
         setTimeout(async () => {
-          await fb.signOut(fb.auth);
-        }, 2000);
+          try { await fb.signOut(fb.auth); } catch(_) {}
+        }, 3000);
       }
     } else {
-      // Logged out — show login screen
+      console.log('[AUTH] No user signed in.');
       showScreen('screen-login');
       switchTab('signin');
       document.getElementById('login-submit').disabled = false;
@@ -1201,11 +1234,8 @@ window.addEventListener('firebase-ready', () => {
   });
 });
 
-/* ==================== DASHBOARD (your original logic, DEVICE_ID now dynamic) ==================== */
 let dashboardStarted = false;
 let lastSeen = 0;
-
-// State — loaded fresh each login but persisted per-device in localStorage
 let schedules, relays, RELAY_LABELS;
 
 function loadDashboardState(deviceId) {
@@ -1218,7 +1248,6 @@ function loadDashboardState(deviceId) {
   };
   const DEFAULT_LABELS={r1:"Relay 1",r2:"Relay 2",r3:"Relay 3",r4:"Relay 4"};
 
-  // Namespace per device so switching accounts doesn't mix data
   schedules = JSON.parse(localStorage.getItem(`sg_schedules_${deviceId}`)) || DEFAULT_SCHEDULES;
   relays = JSON.parse(localStorage.getItem(`sg_relays_${deviceId}`)) || DEFAULT_RELAYS;
   RELAY_LABELS = JSON.parse(localStorage.getItem(`sg_relay_names_${deviceId}`)) || {...DEFAULT_LABELS};
@@ -1251,7 +1280,6 @@ function clearLog(){logEl.innerHTML="";}
 
 function startDashboard(deviceId) {
   if (dashboardStarted) {
-    // Device changed (shouldn't normally happen) — full reload is cleanest
     location.reload();
     return;
   }
@@ -1325,9 +1353,8 @@ function startDashboard(deviceId) {
     }
   });
 
-  // Online watchdog — 8s timeout. When device goes offline, freeze time display
   setInterval(()=>{
-    if (lastSeen === 0) return; // never seen yet
+    if (lastSeen === 0) return;
     const on=(Date.now()-lastSeen)<8000;
     deviceEl.innerHTML=`<span class="dot"></span> ${on?"Online":"Offline"}`;
     deviceEl.className=`status-pill ${on?"ok":"no"}`;
@@ -1467,8 +1494,6 @@ function persistSchedules(){
   localStorage.setItem(`sg_schedules_${window.DEVICE_ID}`,JSON.stringify(schedules));
 }
 
-/* ==================== SERVICE WORKER (PWA offline) ==================== */
-/* ==================== SERVICE WORKER (PWA offline + auto-update) ==================== */
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('sw.js').then(reg => {
