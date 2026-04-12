@@ -1084,7 +1084,7 @@ async function submitAuth() {
   const fb = window._fb;
 
   try {
-    if (mode === 'signup') {
+   if (mode === 'signup') {
       console.log('[SIGNUP] === Starting signup flow ===');
       console.log('[SIGNUP] Email:', email, '| Device:', deviceId);
       showMsg('Creating your account...', 'info');
@@ -1095,64 +1095,58 @@ async function submitAuth() {
       const uid = cred.user.uid;
       console.log('[SIGNUP] Step 1 OK. UID:', uid);
 
-      // STEP 1.5: CRITICAL — force the auth token to materialize before
-      // any Firestore operation. Without this, Firestore SDK may still
-      // see the user as anonymous on the very next call, causing
-      // "Missing or insufficient permissions". This is the fix.
-      console.log('[SIGNUP] Step 1.5: Waiting for auth token to materialize');
+      // STEP 1.5: Force token + wait for Firestore SDK to sync auth state
+      console.log('[SIGNUP] Step 1.5: Waiting for auth token + Firestore sync');
       await cred.user.getIdToken(true);
-      // Brief safety pause to let the SDK propagate the new auth state
-      await new Promise(r => setTimeout(r, 300));
-      console.log('[SIGNUP] Step 1.5 OK. Auth token ready.');
+      // Wait longer this time — Firestore SDK needs to internalize the new auth
+      await new Promise(r => setTimeout(r, 800));
+      console.log('[SIGNUP] Step 1.5 OK.');
 
-      // STEP 2: Check if device is already linked
-      console.log('[SIGNUP] Step 2: getDoc on devices/' + deviceId);
-      const deviceRef = fb.doc(fb.db, 'devices', deviceId);
-      let deviceSnap;
-      try {
-        deviceSnap = await fb.getDoc(deviceRef);
-        console.log('[SIGNUP] Step 2 OK. exists?', deviceSnap.exists());
-      } catch (e) {
-        console.error('[SIGNUP] Step 2 FAILED:', e);
-        // Cleanup orphan account
-        try { await cred.user.delete(); } catch(_) {}
-        throw e;
-      }
-
-      if (deviceSnap.exists()) {
-        showMsg('This device is already linked to another account.', 'error');
-        try { await cred.user.delete(); } catch(_) {}
-        btn.disabled = false;
-        return;
-      }
-
-      // STEP 3: Create user doc
-      console.log('[SIGNUP] Step 3: setDoc on users/' + uid);
+      // STEP 2: Create the user doc FIRST. This is permitted because
+      // we're authenticated and writing to our own UID.
+      console.log('[SIGNUP] Step 2: setDoc on users/' + uid);
       try {
         await fb.setDoc(fb.doc(fb.db, 'users', uid), {
           email: email,
           deviceId: deviceId,
           createdAt: fb.serverTimestamp()
         });
-        console.log('[SIGNUP] Step 3 OK');
+        console.log('[SIGNUP] Step 2 OK');
       } catch (e) {
-        console.error('[SIGNUP] Step 3 FAILED:', e);
+        console.error('[SIGNUP] Step 2 FAILED:', e);
         try { await cred.user.delete(); } catch(_) {}
         throw e;
       }
 
-      // STEP 4: Create device doc
-      console.log('[SIGNUP] Step 4: setDoc on devices/' + deviceId);
+      // STEP 3: Try to create the device doc. The rule only allows this
+      // if the device doesn't already exist. If it does exist, the rule
+      // rejects with "permission-denied" — which we catch and treat as
+      // "already linked".
+      console.log('[SIGNUP] Step 3: setDoc on devices/' + deviceId);
       try {
-        await fb.setDoc(deviceRef, {
+        await fb.setDoc(fb.doc(fb.db, 'devices', deviceId), {
           ownerId: uid,
           linkedAt: fb.serverTimestamp()
         });
-        console.log('[SIGNUP] Step 4 OK');
+        console.log('[SIGNUP] Step 3 OK');
       } catch (e) {
-        console.error('[SIGNUP] Step 4 FAILED:', e);
-        // Don't delete user here — they have a user doc already, they can sign in.
-        throw e;
+        console.error('[SIGNUP] Step 3 FAILED:', e);
+        // Rule rejected because device already exists (or some other issue)
+        const isAlreadyLinked = (e.code === 'permission-denied') || 
+                                (e.message || '').includes('insufficient permissions');
+        if (isAlreadyLinked) {
+          showMsg('This device is already linked to another account.', 'error');
+        } else {
+          showMsg('Could not link device: ' + (e.message || 'unknown error'), 'error');
+        }
+        // Cleanup: delete the user doc and auth account
+        try { 
+          // Note: we can't easily delete the users doc due to rules,
+          // but the orphan auth account will be cleaned up
+          await cred.user.delete(); 
+        } catch(_) {}
+        btn.disabled = false;
+        return;
       }
 
       console.log('[SIGNUP] === SIGNUP COMPLETE ===');

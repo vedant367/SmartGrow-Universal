@@ -1,6 +1,6 @@
 // Bump VERSION every time you push an update.
 // This is what tells browsers "new version exists, throw away old cache".
-const VERSION = 'v5';
+const VERSION = 'v6';
 const CACHE = `smartgrow-${VERSION}`;
 
 const ASSETS = [
