@@ -1468,9 +1468,19 @@ function persistSchedules(){
 }
 
 /* ==================== SERVICE WORKER (PWA offline) ==================== */
+/* ==================== SERVICE WORKER (PWA offline + auto-update) ==================== */
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('sw.js').catch(err => {
+    navigator.serviceWorker.register('sw.js').then(reg => {
+      reg.update();
+      let refreshing = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (refreshing) return;
+        refreshing = true;
+        window.location.reload();
+      });
+      setInterval(() => reg.update(), 60000);
+    }).catch(err => {
       console.warn('SW registration failed:', err);
     });
   });
