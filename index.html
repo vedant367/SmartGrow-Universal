@@ -19,7 +19,7 @@
     signOut, onAuthStateChanged, setPersistence, browserLocalPersistence
   } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
   import {
-    getFirestore, doc, getDoc, setDoc, serverTimestamp
+    getFirestore, doc, getDoc, setDoc, deleteDoc, serverTimestamp
   } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
   const firebaseConfig = {
@@ -40,7 +40,7 @@
   window._fb = {
     auth, db,
     createUserWithEmailAndPassword, signInWithEmailAndPassword,
-    signOut, onAuthStateChanged, doc, getDoc, setDoc, serverTimestamp
+    signOut, onAuthStateChanged, doc, getDoc, setDoc, deleteDoc, serverTimestamp
   };
   window.dispatchEvent(new Event('firebase-ready'));
 </script>
@@ -140,6 +140,7 @@ body{
 .screen { display: none; }
 .screen.active { display: block; }
 
+/* ============ LOADING SCREEN ============ */
 #screen-loading {
   min-height: 100dvh;
   display: none;
@@ -174,6 +175,7 @@ body{
   letter-spacing: .3px;
 }
 
+/* ============ LOGIN SCREEN ============ */
 #screen-login {
   min-height: 100dvh;
   display: none;
@@ -285,10 +287,7 @@ body{
   border-color: var(--blue);
 }
 
-.signup-only { display: none; }
-.login-box[data-mode="signup"] .signup-only { display: block; }
-
-.login-btn {
+.primary-btn {
   width: 100%;
   height: 48px;
   border: none;
@@ -303,13 +302,13 @@ body{
   box-shadow: 0 6px 20px rgba(48,209,88,.3);
   transition: all .2s var(--ease);
 }
-.login-btn:active { transform: scale(.98); }
-.login-btn:disabled {
+.primary-btn:active { transform: scale(.98); }
+.primary-btn:disabled {
   opacity: .6;
   cursor: not-allowed;
 }
 
-.login-msg {
+.msg {
   margin-top: 14px;
   padding: 10px 14px;
   border-radius: 10px;
@@ -319,11 +318,12 @@ body{
   display: none;
   word-wrap: break-word;
 }
-.login-msg.show { display: block; }
-.login-msg.info { background: var(--blue-bg); color: var(--blue); }
-.login-msg.error { background: var(--red-bg); color: var(--red); }
-.login-msg.success { background: var(--green-bg); color: var(--green); }
+.msg.show { display: block; }
+.msg.info { background: var(--blue-bg); color: var(--blue); }
+.msg.error { background: var(--red-bg); color: var(--red); }
+.msg.success { background: var(--green-bg); color: var(--green); }
 
+/* ============ TOPBAR (shared) ============ */
 .container{
   max-width: 980px;
   margin: 0 auto;
@@ -353,6 +353,7 @@ body{
   font-size: 20px;
   box-shadow: 0 4px 14px rgba(48,209,88,.35);
   flex-shrink: 0;
+  cursor: pointer;
 }
 
 .brand h1{
@@ -414,24 +415,308 @@ body{
 [data-theme="dark"] .ico.s{ opacity: 0; }
 [data-theme="light"] .ico.m{ opacity: 0; }
 
-.logout-btn {
+.icon-btn {
   background: var(--bg3);
   border: 1px solid var(--border);
   color: var(--text2);
-  padding: 7px 14px;
+  width: 36px; height: 36px;
   border-radius: 10px;
-  font-family: var(--font);
-  font-size: 12px;
-  font-weight: 700;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
   transition: all .2s;
 }
-.logout-btn:hover {
+.icon-btn:hover {
+  background: var(--bg4);
+  color: var(--text1);
+}
+.icon-btn.danger:hover {
   background: var(--red-bg);
   color: var(--red);
   border-color: var(--red-bg);
 }
 
+/* ============ DEVICES SCREEN ============ */
+#screen-devices {
+  min-height: 100dvh;
+}
+
+.devices-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+  text-align: center;
+  background: var(--bg2);
+  border-radius: var(--r-xl);
+  box-shadow: var(--shadow);
+  position: relative;
+  margin-top: 20px;
+}
+.devices-empty::after {
+  content:'';
+  position:absolute;
+  inset:0;
+  border-radius: var(--r-xl);
+  border: 1px solid var(--border);
+  pointer-events: none;
+}
+
+.devices-empty .empty-icon {
+  width: 72px; height: 72px;
+  background: var(--bg3);
+  border-radius: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32px;
+  margin-bottom: 16px;
+}
+
+.devices-empty h2 {
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: -.3px;
+  margin-bottom: 6px;
+}
+
+.devices-empty p {
+  font-size: 13px;
+  color: var(--text3);
+  font-weight: 500;
+  margin-bottom: 20px;
+  max-width: 280px;
+  line-height: 1.5;
+}
+
+.add-device-btn {
+  background: linear-gradient(135deg, #30d158, #0a8a3d);
+  color: #fff;
+  border: none;
+  padding: 12px 24px;
+  border-radius: 12px;
+  font-family: var(--font);
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 6px 20px rgba(48,209,88,.3);
+  transition: all .2s var(--ease);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.add-device-btn:active { transform: scale(.98); }
+
+.devices-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 14px;
+  margin-top: 20px;
+}
+
+.device-card {
+  background: var(--bg2);
+  border-radius: var(--r-xl);
+  padding: 22px;
+  box-shadow: var(--shadow);
+  cursor: pointer;
+  transition: all .25s var(--ease);
+  position: relative;
+  overflow: hidden;
+}
+.device-card::after {
+  content:'';
+  position:absolute;
+  inset:0;
+  border-radius: var(--r-xl);
+  border: 1px solid var(--border);
+  pointer-events: none;
+  transition: border-color .3s;
+}
+.device-card:hover {
+  box-shadow: var(--shadow-hover);
+  transform: translateY(-2px);
+}
+.device-card:hover::after {
+  border-color: var(--green-glow);
+}
+.device-card:active { transform: scale(.99) translateY(-1px); }
+
+.device-card-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.device-icon {
+  width: 48px; height: 48px;
+  background: linear-gradient(135deg, #30d158, #0a8a3d);
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  box-shadow: 0 4px 14px rgba(48,209,88,.3);
+}
+
+.device-name {
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: -.3px;
+  margin-bottom: 2px;
+}
+
+.device-id {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text3);
+  letter-spacing: .5px;
+}
+
+.device-stats {
+  display: flex;
+  gap: 14px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.device-stat {
+  flex: 1;
+}
+
+.device-stat-label {
+  font-size: 9.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .6px;
+  color: var(--text3);
+  margin-bottom: 3px;
+}
+
+.device-stat-value {
+  font-size: 14px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.tap-hint {
+  font-size: 10px;
+  color: var(--text3);
+  font-weight: 600;
+  margin-top: 12px;
+  text-align: center;
+  letter-spacing: .3px;
+  text-transform: uppercase;
+  opacity: .7;
+}
+
+/* ============ ADD DEVICE MODAL ============ */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.6);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 100;
+  animation: fadeIn .2s ease;
+}
+.modal-overlay.show { display: flex; }
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.modal {
+  width: 100%;
+  max-width: 400px;
+  background: var(--bg2);
+  border-radius: var(--r-xl);
+  padding: 28px 24px;
+  box-shadow: var(--shadow-hover);
+  position: relative;
+  animation: slideUp .3s var(--ease);
+}
+.modal::after {
+  content:'';
+  position:absolute;
+  inset:0;
+  border-radius: var(--r-xl);
+  border: 1px solid var(--border);
+  pointer-events: none;
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(16px) scale(.96); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.modal-header {
+  text-align: center;
+  margin-bottom: 20px;
+}
+.modal-header .icon {
+  width: 56px; height: 56px;
+  background: var(--green-bg);
+  border-radius: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 26px;
+  margin-bottom: 12px;
+}
+.modal-header h2 {
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -.3px;
+  margin-bottom: 4px;
+}
+.modal-header p {
+  font-size: 13px;
+  color: var(--text3);
+  font-weight: 500;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.modal-actions .primary-btn {
+  flex: 1;
+  margin-top: 0;
+}
+
+.cancel-btn {
+  flex: 1;
+  height: 48px;
+  border: 1px solid var(--border2);
+  border-radius: 12px;
+  background: transparent;
+  color: var(--text2);
+  font-family: var(--font);
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  margin-top: 8px;
+  transition: all .2s;
+}
+.cancel-btn:hover {
+  background: var(--bg3);
+  color: var(--text1);
+}
+
+/* ============ DASHBOARD (existing) ============ */
 .header{
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
@@ -869,7 +1154,7 @@ body{
   to{ opacity:1; transform: translateY(0); }
 }
 
-.card, .relay, .terminal{
+.card, .relay, .terminal, .device-card, .devices-empty{
   animation: rise .5s var(--ease) backwards;
 }
 
@@ -889,6 +1174,7 @@ body{
   .hero-time{ font-size: 28px; }
   .brand h1{ font-size: 17px; }
   .relay-name{ max-width: 140px; }
+  .devices-grid{ grid-template-columns: 1fr; }
 }
 
 @media(min-width:701px) and (max-width:900px){
@@ -905,11 +1191,13 @@ body{
 
 <body>
 
+<!-- ============ LOADING SCREEN ============ -->
 <div id="screen-loading" class="screen active">
   <div class="loading-logo">🌱</div>
-  <div class="loading-text" id="loading-text">Logging in...</div>
+  <div class="loading-text" id="loading-text">Loading...</div>
 </div>
 
+<!-- ============ LOGIN SCREEN ============ -->
 <div id="screen-login" class="screen">
   <div class="login-box" data-mode="signin" id="login-box">
     <div class="login-header">
@@ -933,76 +1221,118 @@ body{
       <input type="password" id="f-password" autocomplete="current-password" placeholder="••••••••">
     </div>
 
-    <div class="field signup-only">
+    <button class="primary-btn" id="login-submit" onclick="submitAuth()">Sign In</button>
+
+    <div class="msg" id="login-msg"></div>
+  </div>
+</div>
+
+<!-- ============ DEVICES SCREEN (after login) ============ -->
+<div id="screen-devices" class="screen">
+  <div class="container">
+    <div class="topbar">
+      <div class="brand">
+        <div class="brand-logo">🌱</div>
+        <div>
+          <h1>SmartGrow</h1>
+          <small id="user-email">--</small>
+        </div>
+      </div>
+      <div class="topbar-actions">
+        <button class="theme-btn" onclick="toggleTheme()" aria-label="Toggle theme">
+          <span class="ico m">🌙</span>
+          <span class="ico s">☀️</span>
+        </button>
+        <button class="icon-btn danger" onclick="doLogout()" title="Logout">⏻</button>
+      </div>
+    </div>
+
+    <div class="section-label">My Devices</div>
+    <div id="devices-content"></div>
+  </div>
+</div>
+
+<!-- ============ ADD DEVICE MODAL ============ -->
+<div class="modal-overlay" id="add-device-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="icon">📦</div>
+      <h2>Add Device</h2>
+      <p>Enter the Device ID printed on your SmartGrow box</p>
+    </div>
+    <div class="field">
       <label>Device ID</label>
-      <input type="text" id="f-deviceid" placeholder="SG-2026-001" autocapitalize="characters">
+      <input type="text" id="add-device-id" placeholder="SG-2026-001" autocapitalize="characters">
     </div>
-
-    <button class="login-btn" id="login-submit" onclick="submitAuth()">Sign In</button>
-
-    <div class="login-msg" id="login-msg"></div>
+    <div class="msg" id="add-device-msg"></div>
+    <div class="modal-actions">
+      <button class="cancel-btn" onclick="closeAddDevice()">Cancel</button>
+      <button class="primary-btn" id="add-device-btn" onclick="submitAddDevice()">Add</button>
+    </div>
   </div>
 </div>
 
+<!-- ============ DASHBOARD SCREEN (control panel) ============ -->
 <div id="screen-dashboard" class="screen">
-<div class="container">
+  <div class="container">
+    <div class="topbar">
+      <div class="brand">
+        <div class="brand-logo" onclick="backToDevices()" title="Back to devices">🌱</div>
+        <div>
+          <h1>SmartGrow</h1>
+          <small id="brand-deviceid">--</small>
+        </div>
+      </div>
+      <div class="topbar-actions">
+        <button class="theme-btn" onclick="toggleTheme()" aria-label="Toggle theme">
+          <span class="ico m">🌙</span>
+          <span class="ico s">☀️</span>
+        </button>
+        <button class="icon-btn" onclick="backToDevices()" title="Back">←</button>
+      </div>
+    </div>
 
-<div class="topbar">
-  <div class="brand">
-    <div class="brand-logo">🌱</div>
-    <div>
-      <h1>SmartGrow</h1>
-      <small id="brand-deviceid">--</small>
+    <div class="header">
+      <div class="card">
+        <div class="card-label">Device Time</div>
+        <div class="hero-time" id="time">--:--</div>
+        <div class="last-seen" id="last-seen"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-label">Status</div>
+        <div style="display:flex;flex-direction:column;gap:8px;margin-top:4px">
+          <div>Device: <span id="device" class="status-pill no"><span class="dot"></span> Offline</span></div>
+          <div>MQTT: <span id="mqtt" class="status-pill no"><span class="dot"></span> Disconnected</span></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-label">Sensors</div>
+        <div class="sensor"><span class="sensor-icon">🌡</span> Temp <span class="sensor-val" id="temp">--</span></div>
+        <div class="sensor"><span class="sensor-icon">💧</span> Humidity <span class="sensor-val" id="hum">--</span></div>
+        <div class="sensor"><span class="sensor-icon">🚰</span> Water <span class="sensor-val" id="water">--</span></div>
+      </div>
+    </div>
+
+    <div class="section-label">Relay Controls</div>
+    <div class="grid" id="relays"></div>
+
+    <div class="section-label" style="margin-top:24px">System Log</div>
+    <div class="terminal">
+      <div class="term-header">
+        <div class="term-dots"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+        <button onclick="clearLog()">Clear</button>
+      </div>
+      <div id="log"></div>
     </div>
   </div>
-  <div class="topbar-actions">
-    <button class="theme-btn" onclick="toggleTheme()" aria-label="Toggle theme">
-      <span class="ico m">🌙</span>
-      <span class="ico s">☀️</span>
-    </button>
-    <button class="logout-btn" onclick="doLogout()">Logout</button>
-  </div>
-</div>
-
-<div class="header">
-  <div class="card">
-    <div class="card-label">Device Time</div>
-    <div class="hero-time" id="time">--:--</div>
-    <div class="last-seen" id="last-seen"></div>
-  </div>
-
-  <div class="card">
-    <div class="card-label">Status</div>
-    <div style="display:flex;flex-direction:column;gap:8px;margin-top:4px">
-      <div>Device: <span id="device" class="status-pill no"><span class="dot"></span> Offline</span></div>
-      <div>MQTT: <span id="mqtt" class="status-pill no"><span class="dot"></span> Disconnected</span></div>
-    </div>
-  </div>
-
-  <div class="card">
-    <div class="card-label">Sensors</div>
-    <div class="sensor"><span class="sensor-icon">🌡</span> Temp <span class="sensor-val" id="temp">--</span></div>
-    <div class="sensor"><span class="sensor-icon">💧</span> Humidity <span class="sensor-val" id="hum">--</span></div>
-    <div class="sensor"><span class="sensor-icon">🚰</span> Water <span class="sensor-val" id="water">--</span></div>
-  </div>
-</div>
-
-<div class="section-label">Relay Controls</div>
-<div class="grid" id="relays"></div>
-
-<div class="section-label" style="margin-top:24px">System Log</div>
-<div class="terminal">
-  <div class="term-header">
-    <div class="term-dots"><span class="r"></span><span class="y"></span><span class="g"></span></div>
-    <button onclick="clearLog()">Clear</button>
-  </div>
-  <div id="log"></div>
-</div>
-
-</div>
 </div>
 
 <script>
+/* ============================================================
+   SCREEN MANAGEMENT
+============================================================ */
 function showScreen(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   document.getElementById(id).classList.add('active');
@@ -1012,18 +1342,24 @@ function setLoadingText(t) {
   document.getElementById('loading-text').textContent = t;
 }
 
+/* ============================================================
+   THEME
+============================================================ */
 (function initTheme(){
-  const s=localStorage.getItem("sg_theme");
-  if(s) document.documentElement.setAttribute("data-theme",s);
+  const s = localStorage.getItem("sg_theme");
+  if (s) document.documentElement.setAttribute("data-theme", s);
 })();
 
 function toggleTheme(){
-  const h=document.documentElement;
-  const n=h.getAttribute("data-theme")==="dark"?"light":"dark";
-  h.setAttribute("data-theme",n);
-  localStorage.setItem("sg_theme",n);
+  const h = document.documentElement;
+  const n = h.getAttribute("data-theme") === "dark" ? "light" : "dark";
+  h.setAttribute("data-theme", n);
+  localStorage.setItem("sg_theme", n);
 }
 
+/* ============================================================
+   LOGIN / SIGNUP
+============================================================ */
 function switchTab(mode) {
   const box = document.getElementById('login-box');
   box.dataset.mode = mode;
@@ -1031,17 +1367,17 @@ function switchTab(mode) {
     t.classList.toggle('active', t.dataset.tab === mode);
   });
   document.getElementById('login-submit').textContent =
-    mode === 'signup' ? 'Sign Up & Link Device' : 'Sign In';
-  hideMsg();
+    mode === 'signup' ? 'Create Account' : 'Sign In';
+  hideMsg('login-msg');
 }
 
-function showMsg(text, type) {
-  const el = document.getElementById('login-msg');
+function showMsg(elId, text, type) {
+  const el = document.getElementById(elId);
   el.textContent = text;
-  el.className = 'login-msg show ' + type;
+  el.className = 'msg show ' + type;
 }
-function hideMsg() {
-  document.getElementById('login-msg').classList.remove('show');
+function hideMsg(elId) {
+  document.getElementById(elId).classList.remove('show');
 }
 
 function friendlyAuthError(err) {
@@ -1064,19 +1400,10 @@ async function submitAuth() {
   const mode = document.getElementById('login-box').dataset.mode;
   const email = document.getElementById('f-email').value.trim();
   const password = document.getElementById('f-password').value;
-  const deviceId = document.getElementById('f-deviceid').value.trim().toUpperCase();
   const btn = document.getElementById('login-submit');
 
   if (!email || !password) {
-    showMsg('Please fill in email and password.', 'error');
-    return;
-  }
-  if (mode === 'signup' && !deviceId) {
-    showMsg('Please enter your Device ID from the box.', 'error');
-    return;
-  }
-  if (mode === 'signup' && !/^SG-\d{4}-\d{3}$/.test(deviceId)) {
-    showMsg('Device ID should look like SG-2026-001.', 'error');
+    showMsg('login-msg', 'Please fill in email and password.', 'error');
     return;
   }
 
@@ -1084,83 +1411,39 @@ async function submitAuth() {
   const fb = window._fb;
 
   try {
-   if (mode === 'signup') {
+    if (mode === 'signup') {
       console.log('[SIGNUP] === Starting signup flow ===');
-      console.log('[SIGNUP] Email:', email, '| Device:', deviceId);
-      showMsg('Creating your account...', 'info');
+      showMsg('login-msg', 'Creating your account...', 'info');
 
-      // STEP 1: Create the auth account
-      console.log('[SIGNUP] Step 1: createUserWithEmailAndPassword');
       const cred = await fb.createUserWithEmailAndPassword(fb.auth, email, password);
       const uid = cred.user.uid;
-      console.log('[SIGNUP] Step 1 OK. UID:', uid);
+      console.log('[SIGNUP] Auth account created. UID:', uid);
 
-      // STEP 1.5: Force token + wait for Firestore SDK to sync auth state
-      console.log('[SIGNUP] Step 1.5: Waiting for auth token + Firestore sync');
+      // Wait for auth token to propagate
       await cred.user.getIdToken(true);
-      // Wait longer this time — Firestore SDK needs to internalize the new auth
-      await new Promise(r => setTimeout(r, 800));
-      console.log('[SIGNUP] Step 1.5 OK.');
+      await new Promise(r => setTimeout(r, 600));
 
-      // STEP 2: Create the user doc FIRST. This is permitted because
-      // we're authenticated and writing to our own UID.
-      console.log('[SIGNUP] Step 2: setDoc on users/' + uid);
-      try {
-        await fb.setDoc(fb.doc(fb.db, 'users', uid), {
-          email: email,
-          deviceId: deviceId,
-          createdAt: fb.serverTimestamp()
-        });
-        console.log('[SIGNUP] Step 2 OK');
-      } catch (e) {
-        console.error('[SIGNUP] Step 2 FAILED:', e);
-        try { await cred.user.delete(); } catch(_) {}
-        throw e;
-      }
-
-      // STEP 3: Try to create the device doc. The rule only allows this
-      // if the device doesn't already exist. If it does exist, the rule
-      // rejects with "permission-denied" — which we catch and treat as
-      // "already linked".
-      console.log('[SIGNUP] Step 3: setDoc on devices/' + deviceId);
-      try {
-        await fb.setDoc(fb.doc(fb.db, 'devices', deviceId), {
-          ownerId: uid,
-          linkedAt: fb.serverTimestamp()
-        });
-        console.log('[SIGNUP] Step 3 OK');
-      } catch (e) {
-        console.error('[SIGNUP] Step 3 FAILED:', e);
-        // Rule rejected because device already exists (or some other issue)
-        const isAlreadyLinked = (e.code === 'permission-denied') || 
-                                (e.message || '').includes('insufficient permissions');
-        if (isAlreadyLinked) {
-          showMsg('This device is already linked to another account.', 'error');
-        } else {
-          showMsg('Could not link device: ' + (e.message || 'unknown error'), 'error');
-        }
-        // Cleanup: delete the user doc and auth account
-        try { 
-          // Note: we can't easily delete the users doc due to rules,
-          // but the orphan auth account will be cleaned up
-          await cred.user.delete(); 
-        } catch(_) {}
-        btn.disabled = false;
-        return;
-      }
+      // Create user doc — no deviceId yet, that happens after login
+      console.log('[SIGNUP] Writing user doc');
+      await fb.setDoc(fb.doc(fb.db, 'users', uid), {
+        email: email,
+        deviceId: null,
+        createdAt: fb.serverTimestamp()
+      });
 
       console.log('[SIGNUP] === SIGNUP COMPLETE ===');
-      showMsg('Account created! Loading your dashboard...', 'success');
+      showMsg('login-msg', 'Account created! Loading...', 'success');
+      // onAuthStateChanged will take over
 
     } else {
       console.log('[SIGNIN] === Starting signin flow ===');
-      showMsg('Signing in...', 'info');
+      showMsg('login-msg', 'Signing in...', 'info');
       await fb.signInWithEmailAndPassword(fb.auth, email, password);
       console.log('[SIGNIN] OK');
     }
   } catch (err) {
     console.error('[AUTH] Error:', err);
-    showMsg(friendlyAuthError(err), 'error');
+    showMsg('login-msg', friendlyAuthError(err), 'error');
     btn.disabled = false;
   }
 }
@@ -1172,11 +1455,17 @@ async function doLogout() {
       try { window._mqttClient.end(true); } catch(e) {}
       window._mqttClient = null;
     }
+    dashboardStarted = false;
     await fb.signOut(fb.auth);
   } catch (err) {
     console.error(err);
   }
 }
+
+/* ============================================================
+   AUTH STATE → ROUTING
+============================================================ */
+let currentUser = null;
 
 window.addEventListener('firebase-ready', () => {
   const fb = window._fb;
@@ -1184,33 +1473,34 @@ window.addEventListener('firebase-ready', () => {
   fb.onAuthStateChanged(fb.auth, async (user) => {
     if (user) {
       console.log('[AUTH] User signed in:', user.email, '| UID:', user.uid);
-      setLoadingText('Loading your device...');
+      currentUser = user;
+      setLoadingText('Loading your devices...');
       showScreen('screen-loading');
 
       try {
-        // Wait briefly for auth token to be ready
         await user.getIdToken();
         await new Promise(r => setTimeout(r, 200));
 
         const userDoc = await fb.getDoc(fb.doc(fb.db, 'users', user.uid));
 
-        if (!userDoc.exists() || !userDoc.data().deviceId) {
-          console.warn('[AUTH] User has no Firestore doc — orphan account.');
-          await fb.signOut(fb.auth);
-          showScreen('screen-login');
-          switchTab('signup');
-          showMsg('Account incomplete. Please sign up again with your Device ID.', 'info');
-          document.getElementById('login-submit').disabled = false;
-          return;
+        if (!userDoc.exists()) {
+          // Auto-heal: account exists in Auth but no Firestore doc
+          // (e.g. signup partially failed previously)
+          console.warn('[AUTH] No user doc — creating one now');
+          await fb.setDoc(fb.doc(fb.db, 'users', user.uid), {
+            email: user.email,
+            deviceId: null,
+            createdAt: fb.serverTimestamp()
+          });
         }
 
-        const deviceId = userDoc.data().deviceId;
-        console.log('[AUTH] Linked device:', deviceId);
-        window.DEVICE_ID = deviceId;
-        document.getElementById('brand-deviceid').textContent = deviceId;
+        const data = userDoc.exists() ? userDoc.data() : { deviceId: null };
+        document.getElementById('user-email').textContent = user.email;
 
-        showScreen('screen-dashboard');
-        startDashboard(deviceId);
+        // Show devices screen — empty or with linked device
+        showScreen('screen-devices');
+        renderDevices(data.deviceId || null);
+
       } catch (err) {
         console.error('[AUTH] Error loading user doc:', err);
         setLoadingText('Error: ' + (err.message || 'unknown'));
@@ -1220,6 +1510,7 @@ window.addEventListener('firebase-ready', () => {
       }
     } else {
       console.log('[AUTH] No user signed in.');
+      currentUser = null;
       showScreen('screen-login');
       switchTab('signin');
       document.getElementById('login-submit').disabled = false;
@@ -1228,19 +1519,173 @@ window.addEventListener('firebase-ready', () => {
   });
 });
 
+/* ============================================================
+   DEVICES SCREEN
+============================================================ */
+let linkedDeviceId = null;
+
+function renderDevices(deviceId) {
+  linkedDeviceId = deviceId;
+  const el = document.getElementById('devices-content');
+
+  if (!deviceId) {
+    // No device linked — show empty state with Add Device button
+    el.innerHTML = `
+      <div class="devices-empty">
+        <div class="empty-icon">📦</div>
+        <h2>No Device Yet</h2>
+        <p>Add your SmartGrow device to start monitoring and controlling your indoor garden.</p>
+        <button class="add-device-btn" onclick="openAddDevice()">
+          <span>+</span> Add Device
+        </button>
+      </div>
+    `;
+  } else {
+    // Has device — show device card. Tap to open dashboard.
+    const lastSeen = localStorage.getItem(`sg_lastseen_${deviceId}`);
+    const seenAgo = lastSeen ? formatAgo(Date.now() - parseInt(lastSeen)) : 'Not seen yet';
+
+    el.innerHTML = `
+      <div class="devices-grid">
+        <div class="device-card" onclick="openDashboard('${deviceId}')">
+          <div class="device-card-top">
+            <div>
+              <div class="device-name">SmartGrow</div>
+              <div class="device-id">${deviceId}</div>
+            </div>
+            <div class="device-icon">🌱</div>
+          </div>
+          <div class="device-stats">
+            <div class="device-stat">
+              <div class="device-stat-label">Status</div>
+              <div class="device-stat-value" id="card-status">--</div>
+            </div>
+            <div class="device-stat">
+              <div class="device-stat-label">Last Seen</div>
+              <div class="device-stat-value" id="card-seen">${seenAgo}</div>
+            </div>
+          </div>
+          <div class="tap-hint">Tap to open</div>
+        </div>
+      </div>
+    `;
+  }
+}
+
+function formatAgo(ms) {
+  if (ms < 0 || isNaN(ms)) return 'Just now';
+  const s = Math.floor(ms / 1000);
+  if (s < 10) return 'Just now';
+  if (s < 60) return `${s}s ago`;
+  if (s < 3600) return `${Math.floor(s/60)}m ago`;
+  if (s < 86400) return `${Math.floor(s/3600)}h ago`;
+  return `${Math.floor(s/86400)}d ago`;
+}
+
+/* ============================================================
+   ADD DEVICE MODAL
+============================================================ */
+function openAddDevice() {
+  document.getElementById('add-device-id').value = '';
+  hideMsg('add-device-msg');
+  document.getElementById('add-device-modal').classList.add('show');
+  setTimeout(() => document.getElementById('add-device-id').focus(), 200);
+}
+
+function closeAddDevice() {
+  document.getElementById('add-device-modal').classList.remove('show');
+}
+
+async function submitAddDevice() {
+  const deviceId = document.getElementById('add-device-id').value.trim().toUpperCase();
+  const btn = document.getElementById('add-device-btn');
+
+  if (!deviceId) {
+    showMsg('add-device-msg', 'Please enter the Device ID.', 'error');
+    return;
+  }
+  if (!/^SG-\d{4}-\d{3}$/.test(deviceId)) {
+    showMsg('add-device-msg', 'Device ID should look like SG-2026-001.', 'error');
+    return;
+  }
+
+  btn.disabled = true;
+  showMsg('add-device-msg', 'Linking device...', 'info');
+  const fb = window._fb;
+
+  try {
+    // Step 1: Try to claim the device. Firestore rule allows this only
+    // if the device doc doesn't exist (i.e. not already linked to anyone).
+    console.log('[ADD-DEVICE] Claiming device:', deviceId);
+    await fb.setDoc(fb.doc(fb.db, 'devices', deviceId), {
+      ownerId: currentUser.uid,
+      linkedAt: fb.serverTimestamp()
+    });
+    console.log('[ADD-DEVICE] Device claimed');
+
+    // Step 2: Update user doc with deviceId
+    console.log('[ADD-DEVICE] Updating user doc');
+    await fb.setDoc(fb.doc(fb.db, 'users', currentUser.uid), {
+      email: currentUser.email,
+      deviceId: deviceId,
+      createdAt: fb.serverTimestamp()
+    }, { merge: true });
+
+    console.log('[ADD-DEVICE] === DONE ===');
+    showMsg('add-device-msg', 'Device linked!', 'success');
+    setTimeout(() => {
+      closeAddDevice();
+      renderDevices(deviceId);
+    }, 700);
+
+  } catch (err) {
+    console.error('[ADD-DEVICE] Error:', err);
+    const isAlreadyLinked = (err.code === 'permission-denied') ||
+                            (err.message || '').includes('insufficient permissions');
+    if (isAlreadyLinked) {
+      showMsg('add-device-msg', 'This device is already linked to another account.', 'error');
+    } else {
+      showMsg('add-device-msg', 'Could not link device: ' + (err.message || 'unknown error'), 'error');
+    }
+    btn.disabled = false;
+  }
+}
+
+/* ============================================================
+   DASHBOARD (existing logic, slightly refactored)
+============================================================ */
 let dashboardStarted = false;
 let lastSeen = 0;
 let schedules, relays, RELAY_LABELS;
 
+function openDashboard(deviceId) {
+  window.DEVICE_ID = deviceId;
+  document.getElementById('brand-deviceid').textContent = deviceId;
+  showScreen('screen-dashboard');
+  startDashboard(deviceId);
+}
+
+function backToDevices() {
+  // Stop MQTT, return to devices screen
+  if (window._mqttClient) {
+    try { window._mqttClient.end(true); } catch(e) {}
+    window._mqttClient = null;
+  }
+  dashboardStarted = false;
+  lastSeen = 0;
+  showScreen('screen-devices');
+  renderDevices(linkedDeviceId);
+}
+
 function loadDashboardState(deviceId) {
-  const DEFAULT_SCHEDULES={r1:[],r2:[],r3:[],r4:[]};
-  const DEFAULT_RELAYS={
+  const DEFAULT_SCHEDULES = {r1:[],r2:[],r3:[],r4:[]};
+  const DEFAULT_RELAYS = {
     r1:{state:0,mode:"MAN"},
     r2:{state:0,mode:"MAN"},
     r3:{state:0,mode:"MAN"},
     r4:{state:0,mode:"MAN"}
   };
-  const DEFAULT_LABELS={r1:"Relay 1",r2:"Relay 2",r3:"Relay 3",r4:"Relay 4"};
+  const DEFAULT_LABELS = {r1:"Relay 1",r2:"Relay 2",r3:"Relay 3",r4:"Relay 4"};
 
   schedules = JSON.parse(localStorage.getItem(`sg_schedules_${deviceId}`)) || DEFAULT_SCHEDULES;
   relays = JSON.parse(localStorage.getItem(`sg_relays_${deviceId}`)) || DEFAULT_RELAYS;
@@ -1252,31 +1697,28 @@ function saveRelayNames(){
 }
 
 function renameRelay(k, el){
-  const val=el.value.trim();
-  if(val.length>0 && val.length<=20){
-    RELAY_LABELS[k]=val;
+  const val = el.value.trim();
+  if (val.length > 0 && val.length <= 20) {
+    RELAY_LABELS[k] = val;
     saveRelayNames();
-    log(`Renamed → ${val}`,"info");
+    log(`Renamed → ${val}`, "info");
   } else {
-    el.value=RELAY_LABELS[k];
+    el.value = RELAY_LABELS[k];
   }
   el.blur();
 }
 
-const logEl=document.getElementById("log");
-function log(msg,type){
-  const ts=new Date().toLocaleTimeString();
-  const cls=type==="info"?"info":type==="error"?"err":"";
-  logEl.innerHTML+=`<div><span class="ts">[${ts}]</span> <span class="${cls}">${msg}</span></div>`;
-  logEl.parentElement.scrollTop=logEl.parentElement.scrollHeight;
+const logEl = document.getElementById("log");
+function log(msg, type) {
+  const ts = new Date().toLocaleTimeString();
+  const cls = type === "info" ? "info" : type === "error" ? "err" : "";
+  logEl.innerHTML += `<div><span class="ts">[${ts}]</span> <span class="${cls}">${msg}</span></div>`;
+  logEl.parentElement.scrollTop = logEl.parentElement.scrollHeight;
 }
-function clearLog(){logEl.innerHTML="";}
+function clearLog(){ logEl.innerHTML = ""; }
 
 function startDashboard(deviceId) {
-  if (dashboardStarted) {
-    location.reload();
-    return;
-  }
+  if (dashboardStarted) return;
   dashboardStarted = true;
 
   loadDashboardState(deviceId);
@@ -1294,88 +1736,89 @@ function startDashboard(deviceId) {
 
   const client = mqtt.connect(
     "wss://x0fc990f.ala.asia-southeast1.emqxsl.com:8084/mqtt",
-    {username:"SmartGrow_V1",password:"123456789",reconnectPeriod:2000}
+    { username: "SmartGrow_V1", password: "123456789", reconnectPeriod: 2000 }
   );
   window._mqttClient = client;
 
-  client.on("connect",()=>{
-    mqttEl.innerHTML='<span class="dot"></span> Connected';
-    mqttEl.className="status-pill conn";
+  client.on("connect", () => {
+    mqttEl.innerHTML = '<span class="dot"></span> Connected';
+    mqttEl.className = "status-pill conn";
     client.subscribe(STATUS_TOPIC);
-    log("MQTT connected","info");
+    log("MQTT connected", "info");
   });
 
-  client.on("offline",()=>{
-    mqttEl.innerHTML='<span class="dot"></span> Disconnected';
-    mqttEl.className="status-pill no";
-    log("MQTT disconnected","error");
+  client.on("offline", () => {
+    mqttEl.innerHTML = '<span class="dot"></span> Disconnected';
+    mqttEl.className = "status-pill no";
+    log("MQTT disconnected", "error");
   });
 
-  client.on("error",(err)=>{
-    log("MQTT error: "+err.message,"error");
+  client.on("error", (err) => {
+    log("MQTT error: " + err.message, "error");
   });
 
-  client.on("message",(_,msg)=>{
-    lastSeen=Date.now();
-    try{
-      const d=JSON.parse(msg);
+  client.on("message", (_, msg) => {
+    lastSeen = Date.now();
+    localStorage.setItem(`sg_lastseen_${deviceId}`, lastSeen);
+    try {
+      const d = JSON.parse(msg);
 
-      deviceEl.innerHTML='<span class="dot"></span> Online';
-      deviceEl.className="status-pill ok";
+      deviceEl.innerHTML = '<span class="dot"></span> Online';
+      deviceEl.className = "status-pill ok";
       timeEl.classList.remove('frozen');
       lastSeenEl.textContent = '';
 
-      if(d.time) timeEl.textContent=d.time;
-      if(d.temp!==undefined) document.getElementById('temp').textContent=(d.temp===null||isNaN(d.temp))?"--":d.temp.toFixed(1)+" °C";
-      if(d.hum!==undefined) document.getElementById('hum').textContent=(d.hum===null||isNaN(d.hum))?"--":d.hum.toFixed(0)+" %";
-      if(d.water!==undefined){
+      if (d.time) timeEl.textContent = d.time;
+      if (d.temp !== undefined) document.getElementById('temp').textContent = (d.temp === null || isNaN(d.temp)) ? "--" : d.temp.toFixed(1) + " °C";
+      if (d.hum !== undefined) document.getElementById('hum').textContent = (d.hum === null || isNaN(d.hum)) ? "--" : d.hum.toFixed(0) + " %";
+      if (d.water !== undefined) {
         const waterEl = document.getElementById('water');
-        waterEl.textContent=d.water?"OK":"LOW";
-        waterEl.style.color=d.water?"var(--green)":"var(--red)";
+        waterEl.textContent = d.water ? "OK" : "LOW";
+        waterEl.style.color = d.water ? "var(--green)" : "var(--red)";
       }
 
-      ["r1","r2","r3","r4"].forEach(k=>{
-        if(d[k]){
-          relays[k]=d[k];
+      ["r1","r2","r3","r4"].forEach(k => {
+        if (d[k]) {
+          relays[k] = d[k];
           updateRelayUI(k);
         }
       });
 
-      localStorage.setItem(`sg_relays_${deviceId}`,JSON.stringify(relays));
-    }catch(e){
-      log("Parse error: "+e.message,"error");
+      localStorage.setItem(`sg_relays_${deviceId}`, JSON.stringify(relays));
+    } catch (e) {
+      log("Parse error: " + e.message, "error");
     }
   });
 
-  setInterval(()=>{
+  setInterval(() => {
     if (lastSeen === 0) return;
-    const on=(Date.now()-lastSeen)<8000;
-    deviceEl.innerHTML=`<span class="dot"></span> ${on?"Online":"Offline"}`;
-    deviceEl.className=`status-pill ${on?"ok":"no"}`;
+    const on = (Date.now() - lastSeen) < 8000;
+    deviceEl.innerHTML = `<span class="dot"></span> ${on ? "Online" : "Offline"}`;
+    deviceEl.className = `status-pill ${on ? "ok" : "no"}`;
 
     if (!on) {
       timeEl.classList.add('frozen');
-      const secs = Math.floor((Date.now()-lastSeen)/1000);
+      const secs = Math.floor((Date.now() - lastSeen) / 1000);
       if (secs < 60) lastSeenEl.textContent = `Last seen ${secs}s ago`;
       else if (secs < 3600) lastSeenEl.textContent = `Last seen ${Math.floor(secs/60)}m ago`;
       else lastSeenEl.textContent = `Last seen ${Math.floor(secs/3600)}h ${Math.floor((secs%3600)/60)}m ago`;
     }
-  },2000);
+  }, 2000);
 
   render();
 }
 
 function render(){
-  const el=document.getElementById("relays");
-  el.innerHTML="";
-  Object.keys(relays).forEach(k=>{
-    const autoDisabled=schedules[k].length===0;
-    const isOn=!!relays[k].state;
-    const isAuto=relays[k].mode==="AUTO";
+  const el = document.getElementById("relays");
+  el.innerHTML = "";
+  Object.keys(relays).forEach(k => {
+    const autoDisabled = schedules[k].length === 0;
+    const isOn = !!relays[k].state;
+    const isAuto = relays[k].mode === "AUTO";
 
-    let schedHTML="";
-    schedules[k].forEach((s,i)=>{
-      schedHTML+=`
+    let schedHTML = "";
+    schedules[k].forEach((s, i) => {
+      schedHTML += `
         <div class="schedule-row">
           <input type="time" step="60" value="${s.on}"
             onchange="updateSchedule('${k}',${i},'on',this.value)">
@@ -1386,7 +1829,7 @@ function render(){
         </div>`;
     });
 
-    el.innerHTML+=`
+    el.innerHTML += `
       <div class="relay ${isOn?'glow':''}" id="${k}">
         <div class="relay-top">
           <input class="relay-name" value="${RELAY_LABELS[k]}"
@@ -1417,77 +1860,81 @@ function render(){
 }
 
 function updateRelayUI(k){
-  const card=document.getElementById(k);
-  if(!card) return;
+  const card = document.getElementById(k);
+  if (!card) return;
 
-  const isOn=!!relays[k].state;
-  const isAuto=relays[k].mode==="AUTO";
+  const isOn = !!relays[k].state;
+  const isAuto = relays[k].mode === "AUTO";
 
-  card.className=`relay ${isOn?'glow':''}`;
+  card.className = `relay ${isOn?'glow':''}`;
 
-  const badge=card.querySelector('.mode-badge');
-  if(badge){
-    badge.textContent=isAuto?"Auto":"Manual";
-    badge.className=`mode-badge ${isAuto?'mode-auto':'mode-man'}`;
+  const badge = card.querySelector('.mode-badge');
+  if (badge) {
+    badge.textContent = isAuto ? "Auto" : "Manual";
+    badge.className = `mode-badge ${isAuto?'mode-auto':'mode-man'}`;
   }
 
-  const btns=card.querySelectorAll('.btn');
-  if(btns[0]){
-    btns[0].innerHTML=`⏻ ${isOn?'ON':'OFF'}`;
-    btns[0].className=`btn ${isOn?'on':'off'}`;
+  const btns = card.querySelectorAll('.btn');
+  if (btns[0]) {
+    btns[0].innerHTML = `⏻ ${isOn?'ON':'OFF'}`;
+    btns[0].className = `btn ${isOn?'on':'off'}`;
   }
-  if(btns[1]){
-    const autoDisabled=schedules[k].length===0;
-    btns[1].innerHTML=`⏱ ${isAuto?'Auto Enabled':'Enable Auto'}`;
-    btns[1].className=`btn auto ${autoDisabled||!isAuto?'off':''}`;
+  if (btns[1]) {
+    const autoDisabled = schedules[k].length === 0;
+    btns[1].innerHTML = `⏱ ${isAuto?'Auto Enabled':'Enable Auto'}`;
+    btns[1].className = `btn auto ${autoDisabled||!isAuto?'off':''}`;
   }
 }
 
 function toggle(k){
-  window._mqttClient.publish(window.CMD_TOPIC,JSON.stringify({[k]:!relays[k].state}));
+  if (!window._mqttClient) return;
+  window._mqttClient.publish(window.CMD_TOPIC, JSON.stringify({[k]: !relays[k].state}));
   log(`Toggle sent → ${RELAY_LABELS[k]}`);
 }
 
 function toggleAuto(k){
-  if(schedules[k].length===0){
-    log(`AUTO blocked for ${RELAY_LABELS[k]} — no schedule`,"error");
+  if (schedules[k].length === 0) {
+    log(`AUTO blocked for ${RELAY_LABELS[k]} — no schedule`, "error");
     return;
   }
-  const newMode=relays[k].mode==="AUTO"?"MAN":"AUTO";
-  window._mqttClient.publish(window.CMD_TOPIC,JSON.stringify({mode:{[k]:newMode}}));
-  log(`${RELAY_LABELS[k]} → ${newMode}`,"info");
+  const newMode = relays[k].mode === "AUTO" ? "MAN" : "AUTO";
+  window._mqttClient.publish(window.CMD_TOPIC, JSON.stringify({mode: {[k]: newMode}}));
+  log(`${RELAY_LABELS[k]} → ${newMode}`, "info");
 }
 
 function addSchedule(k){
-  if(schedules[k].length<3){
-    schedules[k].push({on:"06:00",off:"06:30"});
+  if (schedules[k].length < 3) {
+    schedules[k].push({on:"06:00", off:"06:30"});
     persistSchedules();
     render();
   }
 }
 
-function updateSchedule(k,i,f,v){
-  schedules[k][i][f]=v;
+function updateSchedule(k, i, f, v){
+  schedules[k][i][f] = v;
   persistSchedules();
 }
 
-function removeSchedule(k,i){
-  schedules[k].splice(i,1);
+function removeSchedule(k, i){
+  schedules[k].splice(i, 1);
   persistSchedules();
   render();
-  window._mqttClient.publish(window.CMD_TOPIC,JSON.stringify({type:"schedule",[k]:schedules[k]}));
+  window._mqttClient.publish(window.CMD_TOPIC, JSON.stringify({type:"schedule", [k]: schedules[k]}));
   log(`Schedule removed → ${RELAY_LABELS[k]}`);
 }
 
 function saveSchedule(k){
-  window._mqttClient.publish(window.CMD_TOPIC,JSON.stringify({type:"schedule",[k]:schedules[k]}));
-  log(`Schedule saved → ${RELAY_LABELS[k]}`,"info");
+  window._mqttClient.publish(window.CMD_TOPIC, JSON.stringify({type:"schedule", [k]: schedules[k]}));
+  log(`Schedule saved → ${RELAY_LABELS[k]}`, "info");
 }
 
 function persistSchedules(){
-  localStorage.setItem(`sg_schedules_${window.DEVICE_ID}`,JSON.stringify(schedules));
+  localStorage.setItem(`sg_schedules_${window.DEVICE_ID}`, JSON.stringify(schedules));
 }
 
+/* ============================================================
+   SERVICE WORKER
+============================================================ */
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('sw.js').then(reg => {
