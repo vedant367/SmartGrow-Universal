@@ -1,6 +1,4 @@
-// Bump VERSION every time you push an update.
-// This is what tells browsers "new version exists, throw away old cache".
-const VERSION = 'v6';
+const VERSION = 'v7';
 const CACHE = `smartgrow-${VERSION}`;
 
 const ASSETS = [
@@ -29,7 +27,6 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
 
-  // Never cache Firebase, Google APIs, or MQTT — they must be live
   if (url.hostname.includes('firebaseio.com') ||
       url.hostname.includes('googleapis.com') ||
       url.hostname.includes('firebaseapp.com') ||
@@ -39,9 +36,6 @@ self.addEventListener('fetch', (e) => {
     return;
   }
 
-  // NETWORK-FIRST for index.html and the root path.
-  // This is the magic that makes updates actually show up — the browser
-  // always tries to fetch fresh HTML, falling back to cache only when offline.
   if (e.request.mode === 'navigate' ||
       e.request.url.endsWith('/') ||
       e.request.url.endsWith('index.html')) {
@@ -55,7 +49,6 @@ self.addEventListener('fetch', (e) => {
     return;
   }
 
-  // CACHE-FIRST for everything else (fonts, MQTT lib, images)
   e.respondWith(
     caches.match(e.request).then(cached =>
       cached || fetch(e.request).then(resp => {
