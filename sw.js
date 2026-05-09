@@ -1,10 +1,13 @@
-const VERSION = 'v7';
+const VERSION = 'v8';
 const CACHE = `smartgrow-${VERSION}`;
 
 const ASSETS = [
   './',
   './index.html',
   './manifest.json',
+  './icon-192.png',
+  './icon-512.png',
+  './apple-touch-icon.png',
   'https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap',
   'https://unpkg.com/mqtt/dist/mqtt.min.js'
 ];
@@ -27,6 +30,7 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
 
+  // Never cache live data sources
   if (url.hostname.includes('firebaseio.com') ||
       url.hostname.includes('googleapis.com') ||
       url.hostname.includes('firebaseapp.com') ||
@@ -36,6 +40,7 @@ self.addEventListener('fetch', (e) => {
     return;
   }
 
+  // Network-first for HTML
   if (e.request.mode === 'navigate' ||
       e.request.url.endsWith('/') ||
       e.request.url.endsWith('index.html')) {
@@ -49,6 +54,7 @@ self.addEventListener('fetch', (e) => {
     return;
   }
 
+  // Cache-first for everything else
   e.respondWith(
     caches.match(e.request).then(cached =>
       cached || fetch(e.request).then(resp => {

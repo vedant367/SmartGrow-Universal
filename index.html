@@ -6,10 +6,11 @@
 <title>SmartGrow</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#000000">
-<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="SmartGrow">
 
 <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
 <script type="module">
@@ -716,7 +717,7 @@ body{
   color: var(--text1);
 }
 
-/* ============ DASHBOARD (existing) ============ */
+/* ============ DASHBOARD ============ */
 .header{
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
@@ -1167,6 +1168,89 @@ body{
 .grid .relay:nth-child(4){ animation-delay:.28s }
 .terminal{ animation-delay:.32s }
 
+/* ============ INSTALL BANNER ============ */
+.install-banner {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg2);
+  border: 1px solid var(--border2);
+  border-radius: 18px;
+  padding: 14px 18px;
+  display: none;
+  align-items: center;
+  gap: 14px;
+  box-shadow: 0 8px 36px rgba(0,0,0,.5);
+  z-index: 9999;
+  min-width: 290px;
+  max-width: calc(100vw - 40px);
+  animation: slideUpBanner .35s var(--ease);
+}
+.install-banner.show { display: flex; }
+
+@keyframes slideUpBanner {
+  from { opacity: 0; transform: translate(-50%, 20px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+
+.install-banner-icon {
+  width: 42px; height: 42px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #30d158, #0a8a3d);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  flex-shrink: 0;
+  box-shadow: 0 4px 14px rgba(48,209,88,.35);
+}
+
+.install-banner-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.install-banner-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text1);
+  margin-bottom: 2px;
+}
+
+.install-banner-sub {
+  font-size: 11px;
+  color: var(--text3);
+  font-weight: 500;
+}
+
+.install-banner-btn {
+  background: linear-gradient(135deg, #30d158, #0a8a3d);
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  padding: 8px 16px;
+  font-family: var(--font);
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all .2s;
+}
+.install-banner-btn:active { transform: scale(.96); }
+
+.install-banner-close {
+  background: transparent;
+  border: none;
+  color: var(--text3);
+  font-size: 18px;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.install-banner-close:hover { color: var(--text1); }
+
 @media(max-width:700px){
   .container{ padding: 14px 14px 32px; }
   .header{ grid-template-columns: 1fr; gap: 10px; }
@@ -1175,6 +1259,11 @@ body{
   .brand h1{ font-size: 17px; }
   .relay-name{ max-width: 140px; }
   .devices-grid{ grid-template-columns: 1fr; }
+  .install-banner { min-width: auto; left: 12px; right: 12px; transform: none; }
+  @keyframes slideUpBanner {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
 }
 
 @media(min-width:701px) and (max-width:900px){
@@ -1227,7 +1316,7 @@ body{
   </div>
 </div>
 
-<!-- ============ DEVICES SCREEN (after login) ============ -->
+<!-- ============ DEVICES SCREEN ============ -->
 <div id="screen-devices" class="screen">
   <div class="container">
     <div class="topbar">
@@ -1272,7 +1361,7 @@ body{
   </div>
 </div>
 
-<!-- ============ DASHBOARD SCREEN (control panel) ============ -->
+<!-- ============ DASHBOARD SCREEN ============ -->
 <div id="screen-dashboard" class="screen">
   <div class="container">
     <div class="topbar">
@@ -1327,6 +1416,17 @@ body{
       <div id="log"></div>
     </div>
   </div>
+</div>
+
+<!-- ============ INSTALL BANNER ============ -->
+<div class="install-banner" id="install-banner">
+  <div class="install-banner-icon">🌱</div>
+  <div class="install-banner-text">
+    <div class="install-banner-title">Install SmartGrow</div>
+    <div class="install-banner-sub">Add to home screen for quick access</div>
+  </div>
+  <button class="install-banner-btn" onclick="installApp()">Install</button>
+  <button class="install-banner-close" onclick="dismissInstallBanner()" aria-label="Close">✕</button>
 </div>
 
 <script>
@@ -1419,11 +1519,9 @@ async function submitAuth() {
       const uid = cred.user.uid;
       console.log('[SIGNUP] Auth account created. UID:', uid);
 
-      // Wait for auth token to propagate
       await cred.user.getIdToken(true);
       await new Promise(r => setTimeout(r, 600));
 
-      // Create user doc — no deviceId yet, that happens after login
       console.log('[SIGNUP] Writing user doc');
       await fb.setDoc(fb.doc(fb.db, 'users', uid), {
         email: email,
@@ -1433,7 +1531,6 @@ async function submitAuth() {
 
       console.log('[SIGNUP] === SIGNUP COMPLETE ===');
       showMsg('login-msg', 'Account created! Loading...', 'success');
-      // onAuthStateChanged will take over
 
     } else {
       console.log('[SIGNIN] === Starting signin flow ===');
@@ -1484,8 +1581,6 @@ window.addEventListener('firebase-ready', () => {
         const userDoc = await fb.getDoc(fb.doc(fb.db, 'users', user.uid));
 
         if (!userDoc.exists()) {
-          // Auto-heal: account exists in Auth but no Firestore doc
-          // (e.g. signup partially failed previously)
           console.warn('[AUTH] No user doc — creating one now');
           await fb.setDoc(fb.doc(fb.db, 'users', user.uid), {
             email: user.email,
@@ -1497,7 +1592,6 @@ window.addEventListener('firebase-ready', () => {
         const data = userDoc.exists() ? userDoc.data() : { deviceId: null };
         document.getElementById('user-email').textContent = user.email;
 
-        // Show devices screen — empty or with linked device
         showScreen('screen-devices');
         renderDevices(data.deviceId || null);
 
@@ -1529,7 +1623,6 @@ function renderDevices(deviceId) {
   const el = document.getElementById('devices-content');
 
   if (!deviceId) {
-    // No device linked — show empty state with Add Device button
     el.innerHTML = `
       <div class="devices-empty">
         <div class="empty-icon">📦</div>
@@ -1541,7 +1634,6 @@ function renderDevices(deviceId) {
       </div>
     `;
   } else {
-    // Has device — show device card. Tap to open dashboard.
     const lastSeen = localStorage.getItem(`sg_lastseen_${deviceId}`);
     const seenAgo = lastSeen ? formatAgo(Date.now() - parseInt(lastSeen)) : 'Not seen yet';
 
@@ -1614,8 +1706,6 @@ async function submitAddDevice() {
   const fb = window._fb;
 
   try {
-    // Step 1: Try to claim the device. Firestore rule allows this only
-    // if the device doc doesn't exist (i.e. not already linked to anyone).
     console.log('[ADD-DEVICE] Claiming device:', deviceId);
     await fb.setDoc(fb.doc(fb.db, 'devices', deviceId), {
       ownerId: currentUser.uid,
@@ -1623,7 +1713,6 @@ async function submitAddDevice() {
     });
     console.log('[ADD-DEVICE] Device claimed');
 
-    // Step 2: Update user doc with deviceId
     console.log('[ADD-DEVICE] Updating user doc');
     await fb.setDoc(fb.doc(fb.db, 'users', currentUser.uid), {
       email: currentUser.email,
@@ -1652,7 +1741,7 @@ async function submitAddDevice() {
 }
 
 /* ============================================================
-   DASHBOARD (existing logic, slightly refactored)
+   DASHBOARD
 ============================================================ */
 let dashboardStarted = false;
 let lastSeen = 0;
@@ -1666,7 +1755,6 @@ function openDashboard(deviceId) {
 }
 
 function backToDevices() {
-  // Stop MQTT, return to devices screen
   if (window._mqttClient) {
     try { window._mqttClient.end(true); } catch(e) {}
     window._mqttClient = null;
@@ -1931,6 +2019,61 @@ function saveSchedule(k){
 function persistSchedules(){
   localStorage.setItem(`sg_schedules_${window.DEVICE_ID}`, JSON.stringify(schedules));
 }
+
+/* ============================================================
+   PWA INSTALL PROMPT
+============================================================ */
+let deferredInstallPrompt = null;
+
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredInstallPrompt = e;
+  console.log('[PWA] Install prompt available');
+
+  // Don't show if already installed (running as standalone PWA)
+  if (window.matchMedia('(display-mode: standalone)').matches ||
+      window.navigator.standalone === true) {
+    return;
+  }
+
+  // Don't show if user dismissed it recently (within 7 days)
+  const dismissed = localStorage.getItem('sg_install_dismissed');
+  if (dismissed && (Date.now() - parseInt(dismissed)) < 7 * 24 * 60 * 60 * 1000) {
+    return;
+  }
+
+  // Show our custom banner after a short delay
+  setTimeout(() => {
+    document.getElementById('install-banner').classList.add('show');
+  }, 1500);
+});
+
+function installApp() {
+  if (!deferredInstallPrompt) {
+    dismissInstallBanner();
+    return;
+  }
+  deferredInstallPrompt.prompt();
+  deferredInstallPrompt.userChoice.then((result) => {
+    console.log('[PWA] Install outcome:', result.outcome);
+    if (result.outcome === 'accepted') {
+      console.log('[PWA] App installed');
+    }
+    deferredInstallPrompt = null;
+    dismissInstallBanner();
+  });
+}
+
+function dismissInstallBanner() {
+  document.getElementById('install-banner').classList.remove('show');
+  localStorage.setItem('sg_install_dismissed', Date.now().toString());
+}
+
+window.addEventListener('appinstalled', () => {
+  console.log('[PWA] App installed successfully');
+  dismissInstallBanner();
+  deferredInstallPrompt = null;
+});
 
 /* ============================================================
    SERVICE WORKER
