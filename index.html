@@ -616,6 +616,12 @@ body{
   opacity: .7;
 }
 
+.add-another-wrap {
+  display: flex;
+  justify-content: center;
+  margin-top: 20px;
+}
+
 /* ============ ADD DEVICE MODAL ============ */
 .modal-overlay {
   position: fixed;
@@ -1525,7 +1531,7 @@ async function submitAuth() {
       console.log('[SIGNUP] Writing user doc');
       await fb.setDoc(fb.doc(fb.db, 'users', uid), {
         email: email,
-        deviceId: null,
+        devices: [],
         createdAt: fb.serverTimestamp()
       });
 
@@ -1584,16 +1590,32 @@ window.addEventListener('firebase-ready', () => {
           console.warn('[AUTH] No user doc — creating one now');
           await fb.setDoc(fb.doc(fb.db, 'users', user.uid), {
             email: user.email,
-            deviceId: null,
+            devices: [],
             createdAt: fb.serverTimestamp()
           });
         }
 
-        const data = userDoc.exists() ? userDoc.data() : { deviceId: null };
+        const data = userDoc.exists() ? userDoc.data() : { devices: [] };
+
+        // Backward compatibility: migrate old single-device accounts
+        // (where the user doc had `deviceId: "SG-XXXX-XXX"` instead of `devices: [...]`)
+        let deviceList = data.devices;
+        if (!Array.isArray(deviceList)) {
+          if (data.deviceId) {
+            console.log('[AUTH] Migrating old single-device account to multi-device');
+            deviceList = [data.deviceId];
+            await fb.setDoc(fb.doc(fb.db, 'users', user.uid), {
+              devices: deviceList
+            }, { merge: true });
+          } else {
+            deviceList = [];
+          }
+        }
+
         document.getElementById('user-email').textContent = user.email;
 
         showScreen('screen-devices');
-        renderDevices(data.deviceId || null);
+        renderDevices(deviceList);
 
       } catch (err) {
         console.error('[AUTH] Error loading user doc:', err);
@@ -1616,13 +1638,13 @@ window.addEventListener('firebase-ready', () => {
 /* ============================================================
    DEVICES SCREEN
 ============================================================ */
-let linkedDeviceId = null;
+let linkedDevices = [];
 
-function renderDevices(deviceId) {
-  linkedDeviceId = deviceId;
+function renderDevices(deviceList) {
+  linkedDevices = Array.isArray(deviceList) ? deviceList : [];
   const el = document.getElementById('devices-content');
 
-  if (!deviceId) {
+  if (linkedDevices.length === 0) {
     el.innerHTML = `
       <div class="devices-empty">
         <div class="empty-icon">📦</div>
@@ -1633,35 +1655,47 @@ function renderDevices(deviceId) {
         </button>
       </div>
     `;
-  } else {
+    return;
+  }
+
+  let cardsHTML = '';
+  linkedDevices.forEach(deviceId => {
     const lastSeen = localStorage.getItem(`sg_lastseen_${deviceId}`);
     const seenAgo = lastSeen ? formatAgo(Date.now() - parseInt(lastSeen)) : 'Not seen yet';
-
-    el.innerHTML = `
-      <div class="devices-grid">
-        <div class="device-card" onclick="openDashboard('${deviceId}')">
-          <div class="device-card-top">
-            <div>
-              <div class="device-name">SmartGrow</div>
-              <div class="device-id">${deviceId}</div>
-            </div>
-            <div class="device-icon">🌱</div>
+    cardsHTML += `
+      <div class="device-card" onclick="openDashboard('${deviceId}')">
+        <div class="device-card-top">
+          <div>
+            <div class="device-name">SmartGrow</div>
+            <div class="device-id">${deviceId}</div>
           </div>
-          <div class="device-stats">
-            <div class="device-stat">
-              <div class="device-stat-label">Status</div>
-              <div class="device-stat-value" id="card-status">--</div>
-            </div>
-            <div class="device-stat">
-              <div class="device-stat-label">Last Seen</div>
-              <div class="device-stat-value" id="card-seen">${seenAgo}</div>
-            </div>
-          </div>
-          <div class="tap-hint">Tap to open</div>
+          <div class="device-icon">🌱</div>
         </div>
+        <div class="device-stats">
+          <div class="device-stat">
+            <div class="device-stat-label">Status</div>
+            <div class="device-stat-value">--</div>
+          </div>
+          <div class="device-stat">
+            <div class="device-stat-label">Last Seen</div>
+            <div class="device-stat-value">${seenAgo}</div>
+          </div>
+        </div>
+        <div class="tap-hint">Tap to open</div>
       </div>
     `;
-  }
+  });
+
+  el.innerHTML = `
+    <div class="devices-grid">
+      ${cardsHTML}
+    </div>
+    <div class="add-another-wrap">
+      <button class="add-device-btn" onclick="openAddDevice()">
+        <span>+</span> Add Another Device
+      </button>
+    </div>
+  `;
 }
 
 function formatAgo(ms) {
@@ -1701,6 +1735,12 @@ async function submitAddDevice() {
     return;
   }
 
+  // Duplicate check — already in this user's list
+  if (linkedDevices.includes(deviceId)) {
+    showMsg('add-device-msg', 'This device is already in your list.', 'error');
+    return;
+  }
+
   btn.disabled = true;
   showMsg('add-device-msg', 'Linking device...', 'info');
   const fb = window._fb;
@@ -1714,17 +1754,17 @@ async function submitAddDevice() {
     console.log('[ADD-DEVICE] Device claimed');
 
     console.log('[ADD-DEVICE] Updating user doc');
+    const updatedDevices = [...linkedDevices, deviceId];
     await fb.setDoc(fb.doc(fb.db, 'users', currentUser.uid), {
       email: currentUser.email,
-      deviceId: deviceId,
-      createdAt: fb.serverTimestamp()
+      devices: updatedDevices
     }, { merge: true });
 
     console.log('[ADD-DEVICE] === DONE ===');
     showMsg('add-device-msg', 'Device linked!', 'success');
     setTimeout(() => {
       closeAddDevice();
-      renderDevices(deviceId);
+      renderDevices(updatedDevices);
     }, 700);
 
   } catch (err) {
@@ -1762,7 +1802,7 @@ function backToDevices() {
   dashboardStarted = false;
   lastSeen = 0;
   showScreen('screen-devices');
-  renderDevices(linkedDeviceId);
+  renderDevices(linkedDevices);
 }
 
 function loadDashboardState(deviceId) {
@@ -1976,7 +2016,18 @@ function updateRelayUI(k){
 
 function toggle(k){
   if (!window._mqttClient) return;
-  window._mqttClient.publish(window.CMD_TOPIC, JSON.stringify({[k]: !relays[k].state}));
+
+  const newState = !relays[k].state;
+
+  // Optimistic UI: flip locally and repaint immediately.
+  // The device's status broadcast will confirm/correct this within ~3s.
+  relays[k].state = newState;
+  // Toggling manually also implies leaving AUTO — match what firmware does.
+  relays[k].mode = "MAN";
+  updateRelayUI(k);
+  localStorage.setItem(`sg_relays_${window.DEVICE_ID}`, JSON.stringify(relays));
+
+  window._mqttClient.publish(window.CMD_TOPIC, JSON.stringify({[k]: newState}));
   log(`Toggle sent → ${RELAY_LABELS[k]}`);
 }
 
@@ -1986,6 +2037,12 @@ function toggleAuto(k){
     return;
   }
   const newMode = relays[k].mode === "AUTO" ? "MAN" : "AUTO";
+
+  // Optimistic UI: update mode badge instantly.
+  relays[k].mode = newMode;
+  updateRelayUI(k);
+  localStorage.setItem(`sg_relays_${window.DEVICE_ID}`, JSON.stringify(relays));
+
   window._mqttClient.publish(window.CMD_TOPIC, JSON.stringify({mode: {[k]: newMode}}));
   log(`${RELAY_LABELS[k]} → ${newMode}`, "info");
 }
