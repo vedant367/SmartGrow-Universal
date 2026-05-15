@@ -569,6 +569,25 @@ body{
   font-weight: 800;
   letter-spacing: -.3px;
   margin-bottom: 2px;
+  cursor: pointer;
+  padding: 2px 6px;
+  margin-left: -6px;
+  border-radius: 8px;
+  border: 1.5px solid transparent;
+  transition: all .2s;
+  max-width: 180px;
+  outline: none;
+  background: transparent;
+  color: var(--text1);
+  font-family: var(--font);
+}
+.device-name:hover {
+  border-color: var(--border2);
+  background: var(--bg3);
+}
+.device-name:focus {
+  border-color: var(--blue);
+  background: var(--bg3);
 }
 
 .device-id {
@@ -1554,6 +1573,7 @@ async function submitAuth() {
 async function doLogout() {
   const fb = window._fb;
   try {
+    stopDevicesMonitor();
     if (window._mqttClient) {
       try { window._mqttClient.end(true); } catch(e) {}
       window._mqttClient = null;
@@ -1660,13 +1680,37 @@ function renderDevices(deviceList) {
 
   let cardsHTML = '';
   linkedDevices.forEach(deviceId => {
-    const lastSeen = localStorage.getItem(`sg_lastseen_${deviceId}`);
-    const seenAgo = lastSeen ? formatAgo(Date.now() - parseInt(lastSeen)) : 'Not seen yet';
+    const lastSeenRaw = localStorage.getItem(`sg_lastseen_${deviceId}`);
+    const lastSeenMs = lastSeenRaw ? parseInt(lastSeenRaw) : 0;
+    const seenAgo = lastSeenMs ? formatAgo(Date.now() - lastSeenMs) : 'Not seen yet';
+
+    // Status: Online if last status arrived in the last 8s, else Offline.
+    // If we've never received a status from this device, show "Never".
+    let statusText, statusColor;
+    if (!lastSeenMs) {
+      statusText = 'Never';
+      statusColor = 'var(--text3)';
+    } else if ((Date.now() - lastSeenMs) < 8000) {
+      statusText = 'Online';
+      statusColor = 'var(--green)';
+    } else {
+      statusText = 'Offline';
+      statusColor = 'var(--red)';
+    }
+
+    const customName = localStorage.getItem(`sg_devicename_${deviceId}`) || 'SmartGrow';
+
     cardsHTML += `
-      <div class="device-card" onclick="openDashboard('${deviceId}')">
+      <div class="device-card" onclick="cardClick(event, '${deviceId}')">
         <div class="device-card-top">
-          <div>
-            <div class="device-name">SmartGrow</div>
+          <div style="flex:1;min-width:0;">
+            <input class="device-name" value="${customName}"
+              maxlength="24"
+              onclick="event.stopPropagation()"
+              onfocus="event.stopPropagation()"
+              onblur="renameDevice('${deviceId}', this)"
+              onkeydown="if(event.key==='Enter')this.blur()"
+              spellcheck="false">
             <div class="device-id">${deviceId}</div>
           </div>
           <div class="device-icon">🌱</div>
@@ -1674,11 +1718,11 @@ function renderDevices(deviceList) {
         <div class="device-stats">
           <div class="device-stat">
             <div class="device-stat-label">Status</div>
-            <div class="device-stat-value">--</div>
+            <div class="device-stat-value" data-status="${deviceId}" style="color:${statusColor}">${statusText}</div>
           </div>
           <div class="device-stat">
             <div class="device-stat-label">Last Seen</div>
-            <div class="device-stat-value">${seenAgo}</div>
+            <div class="device-stat-value" data-seen="${deviceId}">${seenAgo}</div>
           </div>
         </div>
         <div class="tap-hint">Tap to open</div>
@@ -1696,6 +1740,111 @@ function renderDevices(deviceList) {
       </button>
     </div>
   `;
+
+  // Start the background monitor so status updates live
+  startDevicesMonitor();
+}
+
+/* ============================================================
+   DEVICES SCREEN — LIVE STATUS MONITOR
+   Subscribes to smartgrow/+/status for all linked devices so the
+   Online/Offline pill updates in real time without opening each
+   dashboard. Runs only while the devices screen is visible.
+============================================================ */
+let devicesMonitorClient = null;
+let devicesMonitorRefreshTimer = null;
+
+function startDevicesMonitor() {
+  if (!linkedDevices.length) {
+    stopDevicesMonitor();
+    return;
+  }
+  if (devicesMonitorClient) return; // already running
+
+  console.log('[MONITOR] Starting devices monitor for', linkedDevices.length, 'device(s)');
+
+  devicesMonitorClient = mqtt.connect(
+    "wss://x0fc990f.ala.asia-southeast1.emqxsl.com:8084/mqtt",
+    { username: "SmartGrow_V1", password: "123456789", reconnectPeriod: 3000 }
+  );
+
+  devicesMonitorClient.on("connect", () => {
+    console.log('[MONITOR] Connected — subscribing to status topics');
+    linkedDevices.forEach(deviceId => {
+      devicesMonitorClient.subscribe(`smartgrow/${deviceId}/status`);
+    });
+  });
+
+  devicesMonitorClient.on("message", (topic) => {
+    // Topic format: smartgrow/SG-XXXX-XXX/status
+    const parts = topic.split('/');
+    if (parts.length < 3) return;
+    const deviceId = parts[1];
+    const now = Date.now();
+    localStorage.setItem(`sg_lastseen_${deviceId}`, now);
+    paintDeviceCard(deviceId, now);
+  });
+
+  devicesMonitorClient.on("error", (err) => {
+    console.warn('[MONITOR] Error:', err.message);
+  });
+
+  // Refresh "Last seen X ago" + flip Online→Offline at 8s threshold every 2s
+  if (devicesMonitorRefreshTimer) clearInterval(devicesMonitorRefreshTimer);
+  devicesMonitorRefreshTimer = setInterval(() => {
+    linkedDevices.forEach(deviceId => paintDeviceCard(deviceId));
+  }, 2000);
+}
+
+function stopDevicesMonitor() {
+  if (devicesMonitorClient) {
+    console.log('[MONITOR] Stopping');
+    try { devicesMonitorClient.end(true); } catch(e) {}
+    devicesMonitorClient = null;
+  }
+  if (devicesMonitorRefreshTimer) {
+    clearInterval(devicesMonitorRefreshTimer);
+    devicesMonitorRefreshTimer = null;
+  }
+}
+
+function paintDeviceCard(deviceId, nowOverride) {
+  const statusEl = document.querySelector(`[data-status="${deviceId}"]`);
+  const seenEl = document.querySelector(`[data-seen="${deviceId}"]`);
+  if (!statusEl || !seenEl) return;
+
+  const lastSeenRaw = localStorage.getItem(`sg_lastseen_${deviceId}`);
+  const lastSeenMs = lastSeenRaw ? parseInt(lastSeenRaw) : 0;
+  const now = nowOverride || Date.now();
+
+  if (!lastSeenMs) {
+    statusEl.textContent = 'Never';
+    statusEl.style.color = 'var(--text3)';
+    seenEl.textContent = 'Not seen yet';
+  } else if ((now - lastSeenMs) < 8000) {
+    statusEl.textContent = 'Online';
+    statusEl.style.color = 'var(--green)';
+    seenEl.textContent = formatAgo(now - lastSeenMs);
+  } else {
+    statusEl.textContent = 'Offline';
+    statusEl.style.color = 'var(--red)';
+    seenEl.textContent = formatAgo(now - lastSeenMs);
+  }
+}
+
+// Card click handler: ignore clicks that originated on the name input
+function cardClick(event, deviceId) {
+  if (event.target.classList.contains('device-name')) return;
+  openDashboard(deviceId);
+}
+
+function renameDevice(deviceId, el) {
+  const val = el.value.trim();
+  if (val.length > 0 && val.length <= 24) {
+    localStorage.setItem(`sg_devicename_${deviceId}`, val);
+  } else {
+    el.value = localStorage.getItem(`sg_devicename_${deviceId}`) || 'SmartGrow';
+  }
 }
 
 function formatAgo(ms) {
@@ -1788,6 +1937,7 @@ let lastSeen = 0;
 let schedules, relays, RELAY_LABELS;
 
 function openDashboard(deviceId) {
+  stopDevicesMonitor();   // shut down list-screen monitor while dashboard runs
   window.DEVICE_ID = deviceId;
   document.getElementById('brand-deviceid').textContent = deviceId;
   showScreen('screen-dashboard');
