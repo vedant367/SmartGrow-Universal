@@ -1376,7 +1376,7 @@ body{
     </div>
     <div class="field">
       <label>Device ID</label>
-      <input type="text" id="add-device-id" placeholder="SG-2026-001" autocapitalize="characters">
+      <input type="text" id="add-device-id" placeholder="SG-XXXX-XXX" autocapitalize="characters">
     </div>
     <div class="msg" id="add-device-msg"></div>
     <div class="modal-actions">
@@ -1417,19 +1417,19 @@ body{
         <div class="card-label">Status</div>
         <div style="display:flex;flex-direction:column;gap:8px;margin-top:4px">
           <div>Device: <span id="device" class="status-pill no"><span class="dot"></span> Offline</span></div>
-          <div>MQTT: <span id="mqtt" class="status-pill no"><span class="dot"></span> Disconnected</span></div>
+          <div>Cloud: <span id="mqtt" class="status-pill no"><span class="dot"></span> Not Linked</span></div>
         </div>
       </div>
 
       <div class="card">
-        <div class="card-label">Sensors</div>
-        <div class="sensor"><span class="sensor-icon">🌡</span> Temp <span class="sensor-val" id="temp">--</span></div>
+        <div class="card-label">Garden Conditions</div>
+        <div class="sensor"><span class="sensor-icon">🌡</span> Temperature <span class="sensor-val" id="temp">--</span></div>
         <div class="sensor"><span class="sensor-icon">💧</span> Humidity <span class="sensor-val" id="hum">--</span></div>
-        <div class="sensor"><span class="sensor-icon">🚰</span> Water <span class="sensor-val" id="water">--</span></div>
+        <div class="sensor"><span class="sensor-icon">🚰</span> Water Level <span class="sensor-val" id="water">--</span></div>
       </div>
     </div>
 
-    <div class="section-label">Relay Controls</div>
+    <div class="section-label">Devices</div>
     <div class="grid" id="relays"></div>
 
     <div class="section-label" style="margin-top:24px">System Log</div>
@@ -1618,7 +1618,6 @@ window.addEventListener('firebase-ready', () => {
         const data = userDoc.exists() ? userDoc.data() : { devices: [] };
 
         // Backward compatibility: migrate old single-device accounts
-        // (where the user doc had `deviceId: "SG-XXXX-XXX"` instead of `devices: [...]`)
         let deviceList = data.devices;
         if (!Array.isArray(deviceList)) {
           if (data.deviceId) {
@@ -1660,6 +1659,10 @@ window.addEventListener('firebase-ready', () => {
 ============================================================ */
 let linkedDevices = [];
 
+// How long after the last status packet before we consider a device offline.
+// Firmware publishes ~every 3-5s, so 15s gives enough buffer to avoid flicker.
+const ONLINE_THRESHOLD_MS = 15000;
+
 function renderDevices(deviceList) {
   linkedDevices = Array.isArray(deviceList) ? deviceList : [];
   const el = document.getElementById('devices-content');
@@ -1684,13 +1687,11 @@ function renderDevices(deviceList) {
     const lastSeenMs = lastSeenRaw ? parseInt(lastSeenRaw) : 0;
     const seenAgo = lastSeenMs ? formatAgo(Date.now() - lastSeenMs) : 'Not seen yet';
 
-    // Status: Online if last status arrived in the last 8s, else Offline.
-    // If we've never received a status from this device, show "Never".
     let statusText, statusColor;
     if (!lastSeenMs) {
       statusText = 'Never';
       statusColor = 'var(--text3)';
-    } else if ((Date.now() - lastSeenMs) < 8000) {
+    } else if ((Date.now() - lastSeenMs) < ONLINE_THRESHOLD_MS) {
       statusText = 'Online';
       statusColor = 'var(--green)';
     } else {
@@ -1721,7 +1722,7 @@ function renderDevices(deviceList) {
             <div class="device-stat-value" data-status="${deviceId}" style="color:${statusColor}">${statusText}</div>
           </div>
           <div class="device-stat">
-            <div class="device-stat-label">Last Seen</div>
+            <div class="device-stat-label">Last Update</div>
             <div class="device-stat-value" data-seen="${deviceId}">${seenAgo}</div>
           </div>
         </div>
@@ -1741,15 +1742,11 @@ function renderDevices(deviceList) {
     </div>
   `;
 
-  // Start the background monitor so status updates live
   startDevicesMonitor();
 }
 
 /* ============================================================
    DEVICES SCREEN — LIVE STATUS MONITOR
-   Subscribes to smartgrow/+/status for all linked devices so the
-   Online/Offline pill updates in real time without opening each
-   dashboard. Runs only while the devices screen is visible.
 ============================================================ */
 let devicesMonitorClient = null;
 let devicesMonitorRefreshTimer = null;
@@ -1759,7 +1756,7 @@ function startDevicesMonitor() {
     stopDevicesMonitor();
     return;
   }
-  if (devicesMonitorClient) return; // already running
+  if (devicesMonitorClient) return;
 
   console.log('[MONITOR] Starting devices monitor for', linkedDevices.length, 'device(s)');
 
@@ -1776,7 +1773,6 @@ function startDevicesMonitor() {
   });
 
   devicesMonitorClient.on("message", (topic) => {
-    // Topic format: smartgrow/SG-XXXX-XXX/status
     const parts = topic.split('/');
     if (parts.length < 3) return;
     const deviceId = parts[1];
@@ -1789,11 +1785,11 @@ function startDevicesMonitor() {
     console.warn('[MONITOR] Error:', err.message);
   });
 
-  // Refresh "Last seen X ago" + flip Online→Offline at 8s threshold every 2s
+  // Repaint every second so "Last Update" actually ticks: 1s ago, 2s ago...
   if (devicesMonitorRefreshTimer) clearInterval(devicesMonitorRefreshTimer);
   devicesMonitorRefreshTimer = setInterval(() => {
     linkedDevices.forEach(deviceId => paintDeviceCard(deviceId));
-  }, 2000);
+  }, 1000);
 }
 
 function stopDevicesMonitor() {
@@ -1821,7 +1817,7 @@ function paintDeviceCard(deviceId, nowOverride) {
     statusEl.textContent = 'Never';
     statusEl.style.color = 'var(--text3)';
     seenEl.textContent = 'Not seen yet';
-  } else if ((now - lastSeenMs) < 8000) {
+  } else if ((now - lastSeenMs) < ONLINE_THRESHOLD_MS) {
     statusEl.textContent = 'Online';
     statusEl.style.color = 'var(--green)';
     seenEl.textContent = formatAgo(now - lastSeenMs);
@@ -1832,7 +1828,6 @@ function paintDeviceCard(deviceId, nowOverride) {
   }
 }
 
-// Card click handler: ignore clicks that originated on the name input
 function cardClick(event, deviceId) {
   if (event.target.classList.contains('device-name')) return;
   openDashboard(deviceId);
@@ -1847,10 +1842,11 @@ function renameDevice(deviceId, el) {
   }
 }
 
+// Tick second-by-second so the UI always feels live.
 function formatAgo(ms) {
-  if (ms < 0 || isNaN(ms)) return 'Just now';
+  if (ms < 0 || isNaN(ms)) return '1s ago';
   const s = Math.floor(ms / 1000);
-  if (s < 10) return 'Just now';
+  if (s < 1) return '1s ago';
   if (s < 60) return `${s}s ago`;
   if (s < 3600) return `${Math.floor(s/60)}m ago`;
   if (s < 86400) return `${Math.floor(s/3600)}h ago`;
@@ -1880,11 +1876,10 @@ async function submitAddDevice() {
     return;
   }
   if (!/^SG-\d{4}-\d{3}$/.test(deviceId)) {
-    showMsg('add-device-msg', 'Device ID should look like SG-2026-001.', 'error');
+    showMsg('add-device-msg', 'Device ID should look like SG-XXXX-XXX.', 'error');
     return;
   }
 
-  // Duplicate check — already in this user's list
   if (linkedDevices.includes(deviceId)) {
     showMsg('add-device-msg', 'This device is already in your list.', 'error');
     return;
@@ -1937,7 +1932,7 @@ let lastSeen = 0;
 let schedules, relays, RELAY_LABELS;
 
 function openDashboard(deviceId) {
-  stopDevicesMonitor();   // shut down list-screen monitor while dashboard runs
+  stopDevicesMonitor();
   window.DEVICE_ID = deviceId;
   document.getElementById('brand-deviceid').textContent = deviceId;
   showScreen('screen-dashboard');
@@ -1963,7 +1958,14 @@ function loadDashboardState(deviceId) {
     r3:{state:0,mode:"MAN"},
     r4:{state:0,mode:"MAN"}
   };
-  const DEFAULT_LABELS = {r1:"Relay 1",r2:"Relay 2",r3:"Relay 3",r4:"Relay 4"};
+  // Friendly defaults: customer sees meaningful names out of the box.
+  // User can still rename — saved per-device in localStorage.
+  const DEFAULT_LABELS = {
+    r1: "Grow Light",
+    r2: "Oxygen Pump",
+    r3: "USB 1",
+    r4: "USB 2"
+  };
 
   schedules = JSON.parse(localStorage.getItem(`sg_schedules_${deviceId}`)) || DEFAULT_SCHEDULES;
   relays = JSON.parse(localStorage.getItem(`sg_relays_${deviceId}`)) || DEFAULT_RELAYS;
@@ -2019,20 +2021,20 @@ function startDashboard(deviceId) {
   window._mqttClient = client;
 
   client.on("connect", () => {
-    mqttEl.innerHTML = '<span class="dot"></span> Connected';
+    mqttEl.innerHTML = '<span class="dot"></span> Linked';
     mqttEl.className = "status-pill conn";
     client.subscribe(STATUS_TOPIC);
-    log("MQTT connected", "info");
+    log("Cloud connected", "info");
   });
 
   client.on("offline", () => {
-    mqttEl.innerHTML = '<span class="dot"></span> Disconnected';
+    mqttEl.innerHTML = '<span class="dot"></span> Not Linked';
     mqttEl.className = "status-pill no";
-    log("MQTT disconnected", "error");
+    log("Cloud disconnected", "error");
   });
 
   client.on("error", (err) => {
-    log("MQTT error: " + err.message, "error");
+    log("Cloud error: " + err.message, "error");
   });
 
   client.on("message", (_, msg) => {
@@ -2070,7 +2072,7 @@ function startDashboard(deviceId) {
 
   setInterval(() => {
     if (lastSeen === 0) return;
-    const on = (Date.now() - lastSeen) < 8000;
+    const on = (Date.now() - lastSeen) < ONLINE_THRESHOLD_MS;
     deviceEl.innerHTML = `<span class="dot"></span> ${on ? "Online" : "Offline"}`;
     deviceEl.className = `status-pill ${on ? "ok" : "no"}`;
 
@@ -2169,10 +2171,7 @@ function toggle(k){
 
   const newState = !relays[k].state;
 
-  // Optimistic UI: flip locally and repaint immediately.
-  // The device's status broadcast will confirm/correct this within ~3s.
   relays[k].state = newState;
-  // Toggling manually also implies leaving AUTO — match what firmware does.
   relays[k].mode = "MAN";
   updateRelayUI(k);
   localStorage.setItem(`sg_relays_${window.DEVICE_ID}`, JSON.stringify(relays));
@@ -2188,7 +2187,6 @@ function toggleAuto(k){
   }
   const newMode = relays[k].mode === "AUTO" ? "MAN" : "AUTO";
 
-  // Optimistic UI: update mode badge instantly.
   relays[k].mode = newMode;
   updateRelayUI(k);
   localStorage.setItem(`sg_relays_${window.DEVICE_ID}`, JSON.stringify(relays));
@@ -2237,19 +2235,16 @@ window.addEventListener('beforeinstallprompt', (e) => {
   deferredInstallPrompt = e;
   console.log('[PWA] Install prompt available');
 
-  // Don't show if already installed (running as standalone PWA)
   if (window.matchMedia('(display-mode: standalone)').matches ||
       window.navigator.standalone === true) {
     return;
   }
 
-  // Don't show if user dismissed it recently (within 7 days)
   const dismissed = localStorage.getItem('sg_install_dismissed');
   if (dismissed && (Date.now() - parseInt(dismissed)) < 7 * 24 * 60 * 60 * 1000) {
     return;
   }
 
-  // Show our custom banner after a short delay
   setTimeout(() => {
     document.getElementById('install-banner').classList.add('show');
   }, 1500);
